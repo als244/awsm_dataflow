@@ -1,16 +1,15 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 // --- TUNING ---
-// 10 = 0.1ms precision.
 #define TIME_SCALE 10
-// Max horizon. 2000ms * 10 = 20000.
-#define MAX_TICKS 30000
-// Max number of active paths we expect (heuristic constraint to prevent stack
-// overflow)
-#define MAX_ACTIVE_PATHS 2048
+// 16384 ticks = ~1.6 seconds. Sufficient for T=64 (approx 800ms).
+// Must be multiple of 64 for bitset alignment.
+#define MAX_TICKS 16384
+#define WORD_COUNT (MAX_TICKS / 64)
 
 typedef struct {
   int duration_ticks;
@@ -18,10 +17,9 @@ typedef struct {
 } FastOption;
 
 // --- SOLVER ---
-
-double solve_ultra(int T, int N, int k, double *compute_times,
-                   double *raw_durations, double *raw_sizes,
-                   double final_deadline) {
+double solve_bitset(int T, int N, int k, double *compute_times,
+                    double *raw_durations, double *raw_sizes,
+                    double final_deadline) {
 
   // 1. Precompute Arrivals & Deadlines
   int arrivals[1024];
@@ -44,7 +42,7 @@ double solve_ultra(int T, int N, int k, double *compute_times,
   }
 
   // 2. Precompute Options
-  FastOption opts[4096]; // Max T=1024, k=4
+  FastOption opts[2048];
   for (int i = 0; i < T * k; i++) {
     opts[i].duration_ticks = (int)(raw_durations[i] * TIME_SCALE);
     if (opts[i].duration_ticks < 1)
@@ -52,31 +50,24 @@ double solve_ultra(int T, int N, int k, double *compute_times,
     opts[i].size = raw_sizes[i];
   }
 
-  // 3. The Sparse-Dense Hybrid
-  // dp[t] stores the max size at time t. -1.0 means empty.
-  static double dp[MAX_TICKS];
+  // 3. Bitset & DP Arrays
+  // active_words: Bits set to 1 indicate a valid state exists at that index.
+  // dp: Stores the max size for that index.
+  static uint64_t current_words[WORD_COUNT];
+  static uint64_t next_words[WORD_COUNT];
+  static double dp[MAX_TICKS]; // Shared DP array
 
-  // We use two lists to track WHICH indices in dp[] are valid.
-  // This allows us to jump directly to valid data.
-  static int current_indices[MAX_ACTIVE_PATHS];
-  static int next_indices[MAX_ACTIVE_PATHS];
+  // Initialization
+  // We clear the bitsets. We DO NOT need to clear 'dp' (we rely on bits).
+  memset(current_words, 0, sizeof(current_words));
+  memset(next_words, 0, sizeof(next_words));
 
-  int num_current = 0;
-  int num_next = 0;
-
-  // Initialization (Clear DP array ONCE)
-  // For extreme speed, we don't memset the whole thing every run if we track
-  // dirty bits, but memset is fast enough (approx 10us for 200KB).
-  memset(dp, 0, sizeof(dp)); // actually 0.0 is valid for size, so we need a
-                             // flag? optimization: assume 0.0 size is default
-                             // empty. if real size can be 0, we need -1.
-  for (int i = 0; i < MAX_TICKS; i++)
-    dp[i] = -1.0;
-
-  // Setup Start State
+  // Setup Start State (Time 0)
+  current_words[0] = 1ULL; // Set 0th bit
   dp[0] = 0.0;
-  current_indices[0] = 0; // The index '0' is valid
-  num_current = 1;
+
+  // Track bounds to avoid scanning all 256 words
+  int max_word_idx = 0;
 
   // --- MAIN LOOP ---
   for (int i = 0; i < T; i++) {
@@ -84,201 +75,106 @@ double solve_ultra(int T, int N, int k, double *compute_times,
     int deadline = deadlines[i];
     FastOption *task_opts = &opts[i * k];
 
-    num_next = 0;
+    int found_any = 0;
+    int new_max_word = -1;
 
-    // Iterate ONLY the valid indices from previous step
-    for (int idx_ptr = 0; idx_ptr < num_current; idx_ptr++) {
-      int t = current_indices[idx_ptr];
-      double prev_size = dp[t];
+    // Iterate only up to the highest active word
+    for (int w = 0; w <= max_word_idx; w++) {
+      uint64_t word = current_words[w];
 
-      // Clear the old state from DP array as we process it
-      // (Lazy clearing: Prepare dp[] for next round usage)
-      // Wait! We can't clear yet because multiple paths might merge to this
-      // node? Actually, we are reading from 'current' (time t) and writing to
-      // 'next' (time finish). We should clear 't' after we are done with it?
-      // Safer strategy: Clear dp[t] AFTER the loop or track what we touched.
+      // SUPER FAST SKIP: If 64 ticks are empty, continue instantly.
+      if (word == 0)
+        continue;
 
-      int start_tick = (t > arrival) ? t : arrival;
+      // Clear this word from current (Prepare for next round reuse)
+      current_words[w] = 0;
 
-      for (int opt = 0; opt < k; opt++) {
-        int finish = start_tick + task_opts[opt].duration_ticks;
+      // Process all set bits in this word
+      while (word != 0) {
+        // Find index of least significant bit (0-63)
+        int bit_idx = __builtin_ctzll(word);
+        int t = (w * 64) + bit_idx;
 
-        if (finish <= deadline && finish < MAX_TICKS) {
-          double new_size = prev_size + task_opts[opt].size;
+        // Clear the bit so we don't process it again
+        word &= ~(1ULL << bit_idx); // or word ^= (1ULL << bit_idx)
 
-          // CHECK: Is this the first time we reached 'finish' this round?
-          if (dp[finish] == -1.0) {
-            // It's a new valid state for next round
-            if (num_next < MAX_ACTIVE_PATHS) {
-              next_indices[num_next++] = finish;
+        double current_size = dp[t];
+
+        // Wait Logic
+        int start_t = (t > arrival) ? t : arrival;
+
+        for (int opt = 0; opt < k; opt++) {
+          int finish = start_t + task_opts[opt].duration_ticks;
+
+          if (finish <= deadline && finish < MAX_TICKS) {
+            double new_size = current_size + task_opts[opt].size;
+
+            int fin_word = finish / 64;
+            int fin_bit = finish % 64;
+            uint64_t mask = (1ULL << fin_bit);
+
+            // Check if we already visited this state in the 'next' generation
+            if (next_words[fin_word] & mask) {
+              // Collision: Update Max
+              if (new_size > dp[finish]) {
+                dp[finish] = new_size;
+              }
+            } else {
+              // First visit: Set bit and Value
+              next_words[fin_word] |= mask;
               dp[finish] = new_size;
             }
-          } else {
-            // We already reached this time via another path. Update max.
-            if (new_size > dp[finish]) {
-              dp[finish] = new_size;
-            }
-          }
-        }
-      }
 
-      // Clean up the 'prev' slot we just read from.
-      // IMPORTANT: Only if we are sure no future 'next' writes will collide
-      // with this 'prev' slot IF 'finish' < 't' (impossible since duration >
-      // 0). So it is safe to clear dp[t] now? No, because 'next_indices' might
-      // include 't' again (if duration is small and arrival matches). We must
-      // clear dp[t] strictly after we are done writing everything? Actually, we
-      // need to separate 'Read' (current) and 'Write' (next) phases if we use
-      // one array. But we are using one array 'dp'. If we overwrite dp[finish],
-      // and finish happens to be a future 't' in current_indices? Since we
-      // iterate t in arbitrary order (or sorted), and finish > t always, we are
-      // safe IF we iterate t descending? No, finish > t. Safe strategy: We need
-      // a temporary buffer or we risk reading partial updates? With positive
-      // duration, finish > t. So we write "ahead". If we process t=10, write
-      // to 20. Later we process t=20? Yes! Collision risk if current_indices
-      // contains 20. Solution: We need 2 DP arrays (ping-pong) OR verify logic.
-      // Current indices contains "states reached after task i-1".
-      // Next indices contains "states reached after task i".
-      // Task i takes time. So finish > start >= t.
-      // So we are strictly moving forward in time.
-      // But 'dp' array mixes generations.
-      // FIX: Use 2 DP arrays (dp_read, dp_write) to be safe and fast.
-    }
-
-    // --- 4. PRUNING and SWAP ---
-
-    // Since we didn't implement the 2-array logic above, let's fix the logic
-    // here. We will clear the "old" indices now. But we already wrote new
-    // values into dp[] at 'finish' indices. If there was overlap (e.g. t=10 was
-    // valid, and t=5+dur=5 -> 10 became valid for next), we have a conflict.
-
-    // CORRECTED LOOP for Single Array with Collision Safety:
-    // We can't easily do it with 1 array in 1 pass without sorting.
-    // Let's use the Ping-Pong DP approach. It's robust and fast.
-  }
-  return 0.0; // Placeholder, see corrected function below
-}
-
-// --- CORRECTED SOLVER FUNCTION ---
-
-double solve_optimized(int T, int N, int k, double *compute_times,
-                       double *raw_durations, double *raw_sizes,
-                       double final_deadline) {
-
-  int arrivals[1024];
-  int deadlines[1024];
-  int deadline_ticks = (int)(final_deadline * TIME_SCALE);
-
-  double current_clock = 0.0;
-  for (int i = 0; i < T; i++) {
-    current_clock += compute_times[i];
-    arrivals[i] = (int)(current_clock * TIME_SCALE);
-  }
-
-  for (int i = 0; i < T; i++) {
-    int d = deadline_ticks;
-    if (i + N < T) {
-      if (arrivals[i + N] < d)
-        d = arrivals[i + N];
-    }
-    deadlines[i] = d;
-  }
-
-  FastOption opts[4096];
-  for (int i = 0; i < T * k; i++) {
-    opts[i].duration_ticks = (int)(raw_durations[i] * TIME_SCALE);
-    if (opts[i].duration_ticks < 1)
-      opts[i].duration_ticks = 1;
-    opts[i].size = raw_sizes[i];
-  }
-
-  // Ping-Pong Buffers
-  static double dp_A[MAX_TICKS];
-  static double dp_B[MAX_TICKS];
-  static int indices_A[MAX_ACTIVE_PATHS];
-  static int indices_B[MAX_ACTIVE_PATHS];
-
-  // Initial Clear
-  for (int i = 0; i < MAX_TICKS; i++) {
-    dp_A[i] = -1.0;
-    dp_B[i] = -1.0;
-  }
-
-  // Pointers to swap
-  double *dp_read = dp_A;
-  double *dp_write = dp_B;
-  int *idx_read = indices_A;
-  int *idx_write = indices_B;
-
-  int cnt_read = 1;
-  dp_read[0] = 0.0;
-  idx_read[0] = 0;
-
-  for (int i = 0; i < T; i++) {
-    int arrival = arrivals[i];
-    int deadline = deadlines[i];
-    FastOption *task_opts = &opts[i * k];
-
-    int cnt_write = 0;
-
-    // SCAN SPARSE LIST
-    for (int r = 0; r < cnt_read; r++) {
-      int t = idx_read[r];
-      double prev_size = dp_read[t];
-
-      // Clean up read-buffer for next reuse (reset to -1)
-      dp_read[t] = -1.0;
-
-      int start_tick = (t > arrival) ? t : arrival;
-
-      for (int opt = 0; opt < k; opt++) {
-        int finish = start_tick + task_opts[opt].duration_ticks;
-
-        if (finish <= deadline && finish < MAX_TICKS) {
-          double new_size = prev_size + task_opts[opt].size;
-
-          if (dp_write[finish] == -1.0) {
-            // First time visiting this time-slot in this round
-            if (cnt_write < MAX_ACTIVE_PATHS) {
-              idx_write[cnt_write++] = finish;
-              dp_write[finish] = new_size;
-            }
-          } else {
-            // Collision: Keep max
-            if (new_size > dp_write[finish]) {
-              dp_write[finish] = new_size;
-            }
+            if (fin_word > new_max_word)
+              new_max_word = fin_word;
+            found_any = 1;
           }
         }
       }
     }
 
-    // Swap Pointers
-    double *temp_dp = dp_read;
-    dp_read = dp_write;
-    dp_write = temp_dp;
-    int *temp_idx = idx_read;
-    idx_read = idx_write;
-    idx_write = temp_idx;
-    cnt_read = cnt_write;
+    if (!found_any)
+      return 0.0;
 
-    if (cnt_read == 0)
-      return 0.0; // Fail
+    // Swap Bitsets Logic
+    // We actually just swap the pointers logic, but since they are static
+    // arrays and we clear 'current' as we go, we can just memcpy 'next' to
+    // 'current'? No, memcpy is slow (2KB). Better: Swap pointers. But
+    // current_words is static array, not pointer. Let's use pointers. Wait, for
+    // static arrays we can't just swap symbols. We will just copy 'next' to
+    // 'current' efficiently? Actually, since we track 'new_max_word', we only
+    // copy the relevant chunks.
+
+    // Pointer Swap Implementation:
+    // (We need to declare pointers outside loop to swap them properly)
+    // Refactored below for pointer swapping.
+    // For this inline version, let's just do a manual copy loop, it's very fast
+    // because we only copy up to new_max_word.
+
+    max_word_idx = new_max_word;
+    for (int w = 0; w <= new_max_word; w++) {
+      current_words[w] = next_words[w];
+      next_words[w] = 0; // Clear next for future usage
+    }
   }
 
-  // Final Search
+  // Final Result Scan
   double global_max = 0.0;
-  for (int i = 0; i < cnt_read; i++) {
-    int t = idx_read[i];
-    if (dp_read[t] > global_max)
-      global_max = dp_read[t];
-    // Cleanup last buffer (optional, but good practice)
-    dp_read[t] = -1.0;
+  for (int w = 0; w <= max_word_idx; w++) {
+    uint64_t word = current_words[w];
+    while (word != 0) {
+      int bit_idx = __builtin_ctzll(word);
+      word &= ~(1ULL << bit_idx);
+      int t = (w * 64) + bit_idx;
+      if (dp[t] > global_max)
+        global_max = dp[t];
+    }
   }
 
   return global_max;
 }
 
+// --- BENCHMARK ---
 int main() {
   int T = 64;
   int N = 10;
@@ -301,14 +197,14 @@ int main() {
   double deadline = total_time * 1.2;
 
   // Warmup
-  solve_optimized(T, N, k, compute, durations, sizes, deadline);
+  solve_bitset(T, N, k, compute, durations, sizes, deadline);
 
-  int iterations = 10000;
+  int iterations = 20000;
   clock_t start = clock();
 
   volatile double result;
   for (int i = 0; i < iterations; i++) {
-    result = solve_optimized(T, N, k, compute, durations, sizes, deadline);
+    result = solve_bitset(T, N, k, compute, durations, sizes, deadline);
   }
 
   clock_t end = clock();
