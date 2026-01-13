@@ -20,13 +20,13 @@ TO_PROFILE_TORCH_MEMORY = False
 MAX_STEPS = None
 
 DEVICE_ID = 0
-MAX_TOKENS_PER_STEP = 524288
+MAX_TOKENS_PER_STEP = 65536
 MIN_SEQ_LEN = 256
 MAX_SEQ_LEN = 8192
 USE_MUON = False
 SAVE_FINAL = False
 
-MODEL_CHOICE = "olmoe_7Bx1B"
+MODEL_CHOICE = "llama3_8B"
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
@@ -199,8 +199,9 @@ if not os.path.exists(f"{SAVE_MODEL_PATH}"):
 if not os.path.exists(f"{SAVE_MODEL_PATH}/train_seqs"):
     os.makedirs(f"{SAVE_MODEL_PATH}/train_seqs")
 
-if not os.path.exists(f"{SAVE_MODEL_PATH}/expert_hists"):
-    os.makedirs(f"{SAVE_MODEL_PATH}/expert_hists")
+if model_dims["num_routed_experts"] > 0:
+    if not os.path.exists(f"{SAVE_MODEL_PATH}/expert_hists"):
+        os.makedirs(f"{SAVE_MODEL_PATH}/expert_hists")
 
 if TO_PROFILE_TORCH_MEMORY:
     torch.cuda.memory._record_memory_history(max_entries=1000000)
@@ -305,10 +306,11 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     # Save sequences and expert histograms to disk for analysis later...
     pickle.dump(train_seqs, open(f"{SAVE_MODEL_PATH}/train_seqs/step_{step_num}.pkl", "wb"))
 
-    all_expert_hist = {}
-    for layer_id in local_config["local_layer_ids"]:
-        all_expert_hist[layer_id] = model_layers[layer_id].expert_hist
-    pickle.dump(all_expert_hist, open(f"{SAVE_MODEL_PATH}/expert_hists/step_{step_num}.pkl", "wb"))
+    if model_dims["num_routed_experts"] > 0:
+        all_expert_hist = {}
+        for layer_id in local_config["local_layer_ids"]:
+            all_expert_hist[layer_id] = model_layers[layer_id].expert_hist
+        pickle.dump(all_expert_hist, open(f"{SAVE_MODEL_PATH}/expert_hists/step_{step_num}.pkl", "wb"))
 
     ## Saving full training step of step gradients for analysis
     step_save_path = f"{SAVE_MODEL_PATH}/step_{step_num}"
