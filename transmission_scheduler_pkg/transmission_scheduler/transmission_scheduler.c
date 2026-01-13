@@ -36,13 +36,10 @@ static double solve_scalar(int T, int N, int k, const double *compute,
     clk += compute[i];
     arrivals[i] = (int)(clk * TIME_SCALE);
   }
+
   for (int i = 0; i < T; i++) {
-    int d = dead_ticks;
-    if (i + N < T) {
-      if (arrivals[i + N] < d)
-        d = arrivals[i + N];
-    }
-    deadlines[i] = d;
+    deadlines[i] =
+        dead_ticks; // Global deadline only (Relaxed Buffer Constraint)
   }
 
   // 2. Precompute Options
@@ -250,13 +247,10 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     clk += compute[i];
     arrivals[i] = (int)(clk * TIME_SCALE);
   }
+
   for (int i = 0; i < T; i++) {
-    int d = dead_ticks;
-    if (i + N < T) {
-      if (arrivals[i + N] < d)
-        d = arrivals[i + N];
-    }
-    deadlines[i] = d;
+    deadlines[i] =
+        dead_ticks; // Global deadline only (Relaxed Buffer Constraint)
   }
 
   FastOption *opts = (FastOption *)malloc(T * k * sizeof(FastOption));
