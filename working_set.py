@@ -185,6 +185,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     ## need to store transitions
     d_model = model_dims["d_model"]
+    ctx_dim = model_dims["head_dim"] * model_dims["n_kv_heads"]
     residual_dtype = get_torch_dtype(model_dims["datatypes"]["residual"])
 
     ### <= 100% recomputation and no kv recomputaiton constraints
