@@ -6,8 +6,10 @@
 #include <string.h>
 
 // --- CONFIGURATION ---
-#define TIME_SCALE 1   // 1ms precision
-#define BUF_SIZE 65536 // ~65s window. Must be Power of 2
+// 1 tick = 1 ms.
+// Buffer covers ~65 seconds.
+#define TIME_SCALE 1
+#define BUF_SIZE 65536
 #define INF_NEG -1.0e18
 
 typedef struct {
@@ -94,11 +96,28 @@ static double solve_scalar(int T, int N, int k, const double *compute,
     int next_min = BUF_SIZE;
     int next_max = -1;
 
-    int clear_end = max_t + 2000;
+    // --- SMART CLEAR (Scalar) ---
+    // Find max duration to bound the clear
+    int max_dur_task = 0;
+    for (int o = 0; o < k; o++)
+      if (task_opts[o].duration_ticks > max_dur_task)
+        max_dur_task = task_opts[o].duration_ticks;
+
+    // We only need to clear [arrival ... max_t + max_dur]
+    // But for safety against "Wait Logic" reading old garbage, we stick to
+    // clearing what we write. Wait Logic reads from 'dp_curr' (which is valid).
+    // Pull Logic writes to 'dp_next'.
+    // So we just need to clear the region in dp_next we might touch.
+    int clear_start = arrival;
+    int clear_end = max_t + max_dur_task + 1;
     if (clear_end >= BUF_SIZE)
-      clear_end = BUF_SIZE - 1;
-    for (int t = 0; t <= clear_end; t++)
+      clear_end = BUF_SIZE;
+    if (clear_start > clear_end)
+      clear_start = clear_end; // Edge case
+
+    for (int t = clear_start; t < clear_end; t++)
       dp_next[t] = INF_NEG;
+    // --- END SMART CLEAR ---
 
     for (int opt = 0; opt < k; opt++) {
       int dur = task_opts[opt].duration_ticks;
@@ -114,7 +133,7 @@ static double solve_scalar(int T, int N, int k, const double *compute,
 
       if (max_wait > INF_NEG) {
         int finish = arrival + dur;
-        if (finish <= limit) {
+        if (finish <= limit && finish < BUF_SIZE) {
           double val = max_wait + size;
           if (val > dp_next[finish]) {
             dp_next[finish] = val;
@@ -136,7 +155,7 @@ static double solve_scalar(int T, int N, int k, const double *compute,
         for (int src = src_start; src <= max_t; src++) {
           if (dp_curr[src] > INF_NEG) {
             int dest = src + dur;
-            if (dest <= limit) {
+            if (dest <= limit && dest < BUF_SIZE) {
               double val = dp_curr[src] + size;
               if (val > dp_next[dest]) {
                 dp_next[dest] = val;
@@ -211,6 +230,7 @@ static double solve_scalar(int T, int N, int k, const double *compute,
 // =========================================================
 //  AVX2 SOLVER (High Performance)
 // =========================================================
+
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
 
@@ -219,26 +239,62 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
                 const double *durations, const double *sizes, double deadline,
                 int *out_choices) {
 
-  // ... [Allocation Code Same as Before] ...
-  // (arrivals, deadlines, opts, mallocs...)
+  int *arrivals = (int *)malloc(T * sizeof(int));
+  int *deadlines = (int *)malloc(T * sizeof(int));
+  if (!arrivals || !deadlines)
+    return 0.0;
 
-  // COPY-PASTE START: Replaces the main loop logic
-
-  // Dynamic Buffer Allocation
-  static double *dp_table = NULL;
-  static int dp_capacity_rows = 0;
-  static int dp_capacity_cols = 0;
-
-  // Re-allocate if T increases OR Buffer Size changed
-  if (!dp_table || (T + 1) > dp_capacity_rows || BUF_SIZE > dp_capacity_cols) {
-    if (dp_table)
-      free(dp_table);
-    dp_capacity_rows = (T + 1);
-    dp_capacity_cols = BUF_SIZE;
-    dp_table = (double *)malloc(dp_capacity_rows * BUF_SIZE * sizeof(double));
+  int dead_ticks = (int)(deadline * TIME_SCALE);
+  double clk = 0;
+  for (int i = 0; i < T; i++) {
+    clk += compute[i];
+    arrivals[i] = (int)(clk * TIME_SCALE);
+  }
+  for (int i = 0; i < T; i++) {
+    int d = dead_ticks;
+    if (i + N < T) {
+      if (arrivals[i + N] < d)
+        d = arrivals[i + N];
+    }
+    deadlines[i] = d;
   }
 
-  // Clear Row 0 (Only need to clear the start)
+  FastOption *opts = (FastOption *)malloc(T * k * sizeof(FastOption));
+  if (!opts) {
+    free(arrivals);
+    free(deadlines);
+    return 0.0;
+  }
+
+  for (int i = 0; i < T * k; i++) {
+    opts[i].duration_ticks = (int)(durations[i] * TIME_SCALE);
+    if (opts[i].duration_ticks < 1)
+      opts[i].duration_ticks = 1;
+    opts[i].size = sizes[i];
+  }
+
+  // Full Table Alloc
+  static double *dp_table = NULL;
+  static int dp_rows = 0;
+  static int dp_cols = 0;
+
+  // Check for resize needed
+  if (!dp_table || (T + 1) > dp_rows || BUF_SIZE > dp_cols) {
+    if (dp_table)
+      free(dp_table);
+    dp_rows = (T + 1);
+    dp_cols = BUF_SIZE;
+    dp_table = (double *)malloc((size_t)dp_rows * dp_cols * sizeof(double));
+  }
+  if (!dp_table) {
+    free(arrivals);
+    free(deadlines);
+    free(opts);
+    return 0.0;
+  }
+
+  // Init Row 0
+  // We only clear row 0 fully once.
   for (int t = 0; t < BUF_SIZE; t++)
     dp_table[t] = INF_NEG;
   dp_table[0] = 0.0;
@@ -254,34 +310,23 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     double *src = &dp_table[i * BUF_SIZE];
     double *dst = &dp_table[(i + 1) * BUF_SIZE];
 
-    // --- OPTIMIZATION: SMART CLEAR ---
-    // Instead of clearing the whole 64k buffer, only clear where we might
-    // write. We write from [arrival] to [max_t + max_duration]. We can safely
-    // clear a bit more to be safe.
+    // --- SMART CLEAR (AVX) ---
+    int max_dur_task = 0;
+    for (int o = 0; o < k; o++)
+      if (task_opts[o].duration_ticks > max_dur_task)
+        max_dur_task = task_opts[o].duration_ticks;
 
-    // Find max duration for this task to determine clear range
-    int max_dur_this_task = 0;
-    for (int o = 0; o < k; o++) {
-      if (task_opts[o].duration_ticks > max_dur_this_task)
-        max_dur_this_task = task_opts[o].duration_ticks;
-    }
-
-    int clear_start = arrival; // We never write before arrival
-    int clear_end =
-        max_t + max_dur_this_task + 32; // +32 for AVX padding/safety
-
-    // Bounds check
-    if (clear_end > BUF_SIZE)
+    int clear_start = arrival;
+    int clear_end = max_t + max_dur_task + 32; // padding for AVX writes
+    if (clear_end >= BUF_SIZE)
       clear_end = BUF_SIZE;
     if (clear_start > clear_end)
-      clear_start = clear_end; // Should not happen
+      clear_start = clear_end;
 
-    // Only memset the active region
-    // Note: Loops are faster than memset for small warm regions
+    // Only clear active region
     for (int t = clear_start; t < clear_end; t++)
       dst[t] = INF_NEG;
-
-    // --- END OPTIMIZATION ---
+    // --- END SMART CLEAR ---
 
     // Wait Value
     double max_wait = INF_NEG;
@@ -297,7 +342,7 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     if (max_wait > INF_NEG) {
       for (int opt = 0; opt < k; opt++) {
         int fin = arrival + task_opts[opt].duration_ticks;
-        if (fin <= limit && fin < BUF_SIZE) { // Check BUF_SIZE safety
+        if (fin <= limit && fin < BUF_SIZE) {
           double val = max_wait + task_opts[opt].size;
           if (val > dst[fin])
             dst[fin] = val;
@@ -320,6 +365,8 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
         continue;
       if (end_dst > limit)
         end_dst = limit;
+      if (end_dst >= BUF_SIZE)
+        end_dst = BUF_SIZE - 1; // Safety
 
       if (start_dst < next_min)
         next_min = start_dst;
@@ -344,10 +391,10 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     }
 
     if (next_max == -1) {
-      // Cleanup removed for brevity, keeps existing logic
       free(arrivals);
       free(deadlines);
       free(opts);
+      // dp_table persists
       return 0.0;
     }
     min_t = next_min;
@@ -412,7 +459,6 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     max_val = 0.0;
   }
 
-  free(dp_table);
   free(arrivals);
   free(deadlines);
   free(opts);
