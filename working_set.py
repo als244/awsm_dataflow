@@ -187,10 +187,16 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     d_model = model_dims["d_model"]
     residual_dtype = get_torch_dtype(model_dims["datatypes"]["residual"])
 
-    ## TODO: fix this to incorporate GPU transition table constraint along with context windows...
-    ## Should be significantly lower than currently reporting
-    max_tokens_per_round = remaining_total_mem / (d_model * num_local_layers * residual_dtype.itemsize)
+    ### <= 100% recomputation and no kv recomputaiton constraints
+    recomp_lim_max_tokens_per_round = remaining_total_mem / ((d_model + 2 * ctx_dim) * num_local_layers * residual_dtype.itemsize)
 
+    ## accounting for device context windows (fwd + bwd) and transition table
+    gpu_lim_max_tokens_per_round = (remaining_gpu_mem_bytes - max_seq_len * 4 * ctx_dim * residual_dtype.itemsize) / (d_model * residual_dtype.itemsize)
+
+    ## a decent heuristic for max potential tokens per round, though we want to find
+    ## the smallest limit that still gives good performance
+    max_tokens_per_round = int(min(recomp_lim_max_tokens_per_round, gpu_lim_max_tokens_per_round))
+    
     if verbose:
         print(f"[Working Set Log] Determined Max Tokens Per Round of {max_tokens_per_round} based on aggregate available memory of {remaining_total_mem / 1e9:.2f}GB")
 
