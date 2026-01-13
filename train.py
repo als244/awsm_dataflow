@@ -78,7 +78,7 @@ opt_hyperparams = {
     "beta1": 0.95,
     "beta2": 0.98,
     "eps": 1e-8,
-    "weight_decay": 0.1,
+    "weight_decay": 0.01,
     "step_num": 0,
 }
 

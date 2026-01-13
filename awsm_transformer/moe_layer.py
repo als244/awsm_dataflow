@@ -710,7 +710,7 @@ class TransformerMoELayer():
         ### e.) Accumulate results of gathered graidents nad result of router downstream gradient into final upstream grad of FFN norm
 
         ## Accumulate gradients from MoE Block into same input matrix passed in
-        dX = self.backward_moe(dX, chunk_metadata, weights, grad_weights, fwd_act_slot, tokens_per_step)
+        dX = self.backward_moe(dX, chunk_metadata, weights, grad_weights, fwd_act_slot, total_tokens_per_step)
 
         ### Part 2. Attention
 
