@@ -3,8 +3,7 @@ from transmission_scheduler import TransmissionScheduler
 
 sched = TransmissionScheduler()
 T, N, k = 64, 10, 4
-deadline = 20000.0
-compute = np.ones(T) * 10.0
+compute = np.ones(T) * 100.0
 
 # --- SETUP TRADE-OFFS ---
 # Option 0: Slow but High Value (Huge Size)
@@ -30,7 +29,7 @@ for i in range(T):
     sizes[i, 3] = 100.0
 
 # Run Solver
-max_val, choices = sched.solve(compute, durs, sizes, N, deadline)
+max_val, choices = sched.solve(compute, durs, sizes, N)
 
 print(f"Result: {max_val}")
 print(f"Choices: {choices}")
