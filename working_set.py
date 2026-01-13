@@ -228,7 +228,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## We should already be good for overall host memory constraints with valid max_tokens_per_round
     ## but we need to determine valid chunk size; too large a chunk size will incur excess temporary memory usage
     ## (particularly for MoE where we have staging buffers for scatter/gather)
-    ## Inner loop is for determining chunk size which also satisfies GPU memory constraints
     while True:
 
         divisors = get_divisors(cur_tokens_per_round)
@@ -239,7 +238,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
                 act_required_gpu_bytes, static_gpu_bytes = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, potential_chunk_size, num_chunks, training_config=training_config)
 
-
+                print(f"[Working Set Log] Potential Chunk Size of {potential_chunk_size}, Act Required GPU Bytes: {act_required_gpu_bytes / 1e9:.2f}GB, Static GPU Bytes: {static_gpu_bytes / 1e9:.2f}GB")
                 if act_required_gpu_bytes < remaining_gpu_mem_bytes:
                     max_chunk_size = potential_chunk_size
                     target_tokens_per_round = cur_tokens_per_round
@@ -279,6 +278,13 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     host_act_buffer_size = min(max_host_act_buffer_size, remaining_host_mem_bytes)
 
     est_total_host_bytes = host_act_buffer_size + baseline_host_bytes
+
+    saved_act_sizes = get_transformer_saved_act_sizes(model_dims, max_chunk_size)
+    min_act_slot_size_bytes = saved_act_sizes[0]
+
+    min_host_act_buffer_size = host_act_slots * min_act_slot_size_bytes
+
+    assert host_act_buffer_size >= min_host_act_buffer_size
     
     assert est_total_host_bytes <= max_host_mem_bytes
     
