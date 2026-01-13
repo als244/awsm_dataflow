@@ -59,10 +59,8 @@ local_device = device
 model_hyperparams = {
     "rms_norm_eps": 1e-5,
     "position_angles": torch.tensor([500000.0], dtype=torch.float32, device=device),
-    "causal": True,
     "window_size_left": -1,
     "window_size_right": -1,
-    "top_k": 4,
     "load_bal_coeff": 0.01
 }
 
