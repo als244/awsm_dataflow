@@ -1269,24 +1269,10 @@ class ActiveModel:
 
         with self.compute_stream:
             self.profiler.range_push("Optimizer Step")
-
-       
-        if debug:
-            final_layer_id = self.local_layer_ids[-1]
-            #print(f"Step {self.step_count}\n\tBefore: L0: W_attn_norm: {self.cpu_model_weights[0]['w_attn_norm']}\n\tG0: g_attn_norm: {self.cpu_grad_weights[0]['g_attn_norm']}\n\tL0: o_m_attn_norm: {self.cpu_opt_weights[0]['o_m_attn_norm']}\n\tL0: o_v_attn_norm: {self.cpu_opt_weights[0]['o_v_attn_norm']}\n", flush=True)
-            #print(f"Step {self.step_count}\n\tBefore: L{final_layer_id}: W_attn_norm: {self.cpu_model_weights[final_layer_id]['w_attn_norm']}\n\tG{final_layer_id}: g_attn_norm: {self.cpu_grad_weights[final_layer_id]['g_attn_norm']}\n\tL{final_layer_id}: o_m_attn_norm: {self.cpu_opt_weights[final_layer_id]['o_m_attn_norm']}\n\tL{final_layer_id}: o_v_attn_norm: {self.cpu_opt_weights[final_layer_id]['o_v_attn_norm']}\n\n", flush=True)
-            torch.cuda.synchronize()
-            print(f"Head grad proj (norm): {self.head_gpu['grad_weights']['g_head_proj'].norm()}", flush=True)
-            print(f"Head attn norm grad (norm): {self.head_gpu['grad_weights']['g_final_norm'].norm()}", flush=True)
-
-            final_layer_grad = self.cpu_grad_weights[final_layer_id]
-            for name, tensor in final_layer_grad.items():
-                print(f"{name} (norm): {tensor.norm()}", flush=True)
-                
-            # for i in range(len(self.local_layer_ids) - 1, -1, -1):
-            #     layer_id = self.local_layer_ids[i]
-            #     print(f"L{layer_id}: g_attn_norm (norm): {self.cpu_grad_weights[layer_id]['g_attn_norm'].norm()}", flush=True)
-                #print(f"L{layer_id}: g_2 (norm): {self.cpu_grad_weights[layer_id]['g_2'].norm()}", flush=True)
+        
+        ## no matter what the next fwd bwd we start we will start with zero gradients
+        ## set here in case of failure (nan/inf gradient short causing early return)
+        self.zero_grad = True
 
         if self.embed_layer is not None:
             with self.compute_stream:
@@ -1457,7 +1443,6 @@ class ActiveModel:
                 for name, tensor in self.cpu_grad_weights[layer_id].items():
                     tensor.zero_()
         """
-        self.zero_grad = True
 
         with self.compute_stream:
             self.profiler.range_push("Clear GPU Opt State")
