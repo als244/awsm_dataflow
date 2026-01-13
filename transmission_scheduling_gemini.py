@@ -1,5 +1,6 @@
 import time
 import random
+import math
 
 def solve_buffer_constrained_schedule(compute_times, N, options, final_deadline, time_resolution=1.0):
     """
