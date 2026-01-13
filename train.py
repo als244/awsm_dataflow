@@ -17,10 +17,10 @@ all_model_dims = json.load(open("model_dims.json"))
 
 TO_PROFILE_BACKEND = False
 TO_PROFILE_TORCH_MEMORY = False
-MAX_STEPS = 2
+MAX_STEPS = None
 
 DEVICE_ID = 0
-MAX_TOKENS_PER_STEP = 72 * 8192
+MAX_TOKENS_PER_STEP = 524288
 MIN_SEQ_LEN = 256
 MAX_SEQ_LEN = 8192
 USE_MUON = False
@@ -84,6 +84,35 @@ opt_hyperparams = {
 
 
 
+
+
+
+
+
+
+### TODO: this is extremely wasteful for host memory usage, no need to load in billions of tokens/additional metadata created per sequence
+### initially; instead should have background thread that refreshes loading in shards...
+print(f"Creating sequences", flush=True)
+
+train_seq_pool = SequencePool(vocab_size=model_dims["vocab_size"], min_seq_len=MIN_SEQ_LEN, max_seq_len=MAX_SEQ_LEN)
+
+NUM_SHARDS = 20
+
+### TODO: This should be loaded in background asynchronously...
+### right now has high fixed cost for init time to create all sequences...
+for shard_index in range(1, NUM_SHARDS + 1):
+    shard_path = f"fineweb10B/fineweb_train_{shard_index:06d}.bin"
+    num_seqs_loaded = train_seq_pool.load_sequences_from_shard(shard_path,token_dtype=np.uint16, start_id=50256, end_id=50256)
+    print(f"Loaded {num_seqs_loaded} sequences from {shard_path}", flush=True)
+
+
+
+
+
+
+
+
+
 working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, verbose=True)
 
 print("-------- Working Set Config --------")
@@ -120,9 +149,6 @@ chunk_metadata_func = model_layers[0].make_chunk_metadata
 
 active_model = ActiveModel(INIT_MODEL_PATH, model_layers, working_set_config, local_config, chunk_metadata_func, embed_layer=embed_layer, head_layer=head_layer, local_device=local_device)
 
-
-
-
 print(f"Initializing model and saving model to {INIT_MODEL_PATH}", flush=True)
 
 
@@ -135,19 +161,13 @@ if ret != 0:
     print("Failed to load model, exiting...")
     sys.exit(ret)
 
-print(f"Creating sequences", flush=True)
 
 
-train_seq_pool = SequencePool(vocab_size=model_dims["vocab_size"], min_seq_len=MIN_SEQ_LEN, max_seq_len=MAX_SEQ_LEN)
 
-NUM_SHARDS = 1
 
-### TODO: This should be loaded in background asynchronously...
-### right now has high fixed cost for init time to create all sequences...
-for shard_index in range(1, NUM_SHARDS + 1):
-    shard_path = f"fineweb10B/fineweb_train_{shard_index:06d}.bin"
-    num_seqs_loaded = train_seq_pool.load_sequences_from_shard(shard_path,token_dtype=np.uint16, start_id=50256, end_id=50256)
-    print(f"Loaded {num_seqs_loaded} sequences from {shard_path}", flush=True)
+
+
+
 
 
 
@@ -161,7 +181,7 @@ step_stats = {}
 
 loss_smoothed = None
 
-LOSS_THRESHOLD = 2.98
+LOSS_THRESHOLD = 3.28
 
 total_tokens = 0
 total_seqs = 0
@@ -169,7 +189,7 @@ total_flops_cost = 0
 
 train_start_time = time.time()
 
-SAVE_CHECKPOINT_FREQ = 1000
+SAVE_CHECKPOINT_FREQ = 200
 SMOOTH_DECAY = 0.95
 
 if not os.path.exists(f"{SAVE_MODEL_PATH}"):
@@ -191,7 +211,7 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     opt_hyperparams["step_num"] += 1
     step_num = opt_hyperparams["step_num"]
 
-    if step_num > MAX_STEPS:
+    if MAX_STEPS is not None and step_num > MAX_STEPS:
         break
 
     opt_hyperparams["lr"] = get_lr(step_num, max_lr=opt_hyperparams["max_lr"], warmup_pct=opt_hyperparams["warmup_pct"], cooldown_pct=opt_hyperparams["cooldown_pct"], final_lr=opt_hyperparams["final_lr"], est_total_steps=opt_hyperparams["est_total_steps"])
