@@ -430,16 +430,13 @@ class TransformerMoELayer():
         
         return fwd_act_slot
     
-    def backward_moe(self, dX, chunk_metadata, weights, grad_weights, fwd_act_slot, prior_ffn_norm_upstream=None, orig_X=None):
+    def backward_moe(self, dX, chunk_metadata, weights, grad_weights, fwd_act_slot, tokens_per_step, prior_ffn_norm_upstream=None):
 
         num_tokens = dX.shape[0]
         top_k = self.model_dims["top_k"]
         num_experts = self.model_dims["num_routed_experts"]
         model_dim = self.model_dims["d_model"]
         expert_dim = self.model_dims["expert_dim"]
-
-
-
 
         fwd_x_up = fwd_act_slot["x_up"]
         index_mapping = chunk_metadata["token_index_mapping"][self.layer_id]
@@ -465,10 +462,7 @@ class TransformerMoELayer():
         if "ffn_norm_output" in fwd_act_slot:
             fwd_ffn_norm_output = fwd_act_slot.pop("ffn_norm_output")
         else:
-            if orig_X is not None:
-                fwd_ffn_norm_output = awsm_rmsnorm_fwd_recompute(orig_X, weights["w_ffn_norm"], fwd_act_slot["ffn_norm_rstd"])
-            else:
-                fwd_ffn_norm_output = awsm_rmsnorm_fwd_recompute(fwd_act_slot["xo"], weights["w_ffn_norm"], fwd_act_slot["ffn_norm_rstd"])
+            fwd_ffn_norm_output = awsm_rmsnorm_fwd_recompute(fwd_act_slot["xo"], weights["w_ffn_norm"], fwd_act_slot["ffn_norm_rstd"])
 
         ## will need the original scattered x for model gradients with respect to W_up
         ## check if we might already have it if we took the forward_moe_recompute path
@@ -658,6 +652,9 @@ class TransformerMoELayer():
 
         ### Optional load balance loss, applying before we determine the gradient
         ### that should be accumulated into upstream of ffn (dlogits x w_router.T)
+
+        ## We are not detaching this and having gradients flow to earlier layers
+        ## to enforce better routability
         load_bal_coeff = self.model_hyperparams.get("load_bal_coeff", 0.0)
         if load_bal_coeff > 0.0:
             ## accumulates new gradients into existing dlogits
@@ -666,6 +663,8 @@ class TransformerMoELayer():
                 expert_counts=fwd_act_slot["expert_counts"],
                 num_experts=num_experts,
                 alpha=load_bal_coeff,
+                tokens_per_step=tokens_per_step,
+                top_k=top_k,
                 dlogits=dlogits
             )
 
@@ -694,7 +693,7 @@ class TransformerMoELayer():
         return ffn_norm_downstream
         
 
-    def backward(self, dX, chunk_metadata, weights, grad_weights, fwd_act_slot, fwd_context, bwd_context):
+    def backward(self, dX, chunk_metadata, weights, grad_weights, fwd_act_slot, fwd_context, bwd_context, total_tokens_per_step=None):
 
         ## 1st if shared experts can process each individually/seqeuentially
         ## and accumulating bwdX results in "ffn_norm_upstream" and can then 
@@ -710,7 +709,7 @@ class TransformerMoELayer():
         ### e.) Accumulate results of gathered graidents nad result of router downstream gradient into final upstream grad of FFN norm
 
         ## Accumulate gradients from MoE Block into same input matrix passed in
-        dX = self.backward_moe(dX, chunk_metadata, weights, grad_weights, fwd_act_slot)
+        dX = self.backward_moe(dX, chunk_metadata, weights, grad_weights, fwd_act_slot, tokens_per_step)
 
         ### Part 2. Attention
 

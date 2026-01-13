@@ -827,7 +827,7 @@ class ActiveModel:
                     fwd_context["v"][start_chunk_idx: start_chunk_idx + total_q, :].copy_(home_act_slot["xv"])
         return
 
-    def fwd_bwd(self, sequences, loss_scale_factor=None, verbose=True):
+    def fwd_bwd(self, sequences, loss_scale_factor=None, total_tokens_per_step=None, verbose=True):
     
         all_round_seqs, total_tokens = self.split_sequences(sequences)
 
@@ -1101,7 +1101,7 @@ class ActiveModel:
                             self.profiler.range_pop()
 
                             self.profiler.range_push(f"Chunk {cur_chunk_id} (Backward)")
-                            self.transitions_gpu[cur_chunk_id] = layer.backward(self.transitions_gpu[cur_chunk_id], chunk["chunk_metadata"], self.model_weights_gpu[cur_weight_idx], self.grad_weights_gpu[cur_grad_weight_idx], dev_act_slot, self.fwd_context, self.bwd_context)
+                            self.transitions_gpu[cur_chunk_id] = layer.backward(self.transitions_gpu[cur_chunk_id], chunk["chunk_metadata"], self.model_weights_gpu[cur_weight_idx], self.grad_weights_gpu[cur_grad_weight_idx], dev_act_slot, self.fwd_context, self.bwd_context, total_tokens_per_step=total_tokens_per_step)
                             self.profiler.range_pop()
 
                             #torch.cuda.synchronize()

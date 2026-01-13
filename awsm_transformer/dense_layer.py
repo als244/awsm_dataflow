@@ -177,7 +177,7 @@ class TransformerLayer():
         return fwd_act_slot
     
 
-    def backward(self, dX, chunk_metadata, weights, grad_weights, fwd_act_slot, fwd_context, bwd_context):
+    def backward(self, dX, chunk_metadata, weights, grad_weights, fwd_act_slot, fwd_context, bwd_context, total_tokens_per_step=None):
         
         #torch.cuda.synchronize()
         

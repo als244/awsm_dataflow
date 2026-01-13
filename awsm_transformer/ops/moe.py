@@ -1277,8 +1277,9 @@ def awsm_load_balance_bwd(
     logits: torch.Tensor,
     expert_counts: torch.Tensor,
     num_experts: int,
+    top_k: int,
     alpha: float = 0.01,
-    top_k: int = 1,
+    tokens_per_step: int = 0,
     dlogits: torch.Tensor = None
 ) -> torch.Tensor:
     """
@@ -1301,12 +1302,14 @@ def awsm_load_balance_bwd(
             Note: With top-k routing, sum(expert_counts) = T * top_k
             
         num_experts: Number of experts (E).
+
+        top_k: Number of experts each token is routed to.
         
         alpha: Load balancing loss coefficient. Default 0.01.
             Typical values: 0.01 - 0.1
-            
-        top_k: Number of experts each token is routed to. Default 1.
-            Used to correctly normalize expert_counts to fractions.
+
+        tokens_per_step: Number of tokens processed per step to properly scale the load balance loss.
+            If 0, use T (current chunk siz).
             
         dlogits: Optional pre-allocated output buffer. If supplied, we accumulate load balance gradient into it.
             Shape: [T, E]
@@ -1333,10 +1336,17 @@ def awsm_load_balance_bwd(
     
     # Compute fractions: f_e = count_e / (T * top_k)
     # Do this in float32 for precision
+
+    ## expert counts are done per chunk
     fractions = expert_counts.float() / (T * top_k)
     
     # Scale factor: alpha * E / T
-    scale = alpha * E / T
+    ## But scale factor should be done over global batch
+
+    if tokens_per_step == 0:
+        tokens_per_step = T
+
+    scale = alpha * E / tokens_per_step
     
     BLOCK_SIZE = triton.next_power_of_2(E)
     grid = (T,)

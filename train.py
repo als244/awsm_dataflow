@@ -244,7 +244,7 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     
 
     
-    active_model.fwd_bwd(train_seqs, verbose=False, loss_scale_factor=1.0 / step_tokens)
+    active_model.fwd_bwd(train_seqs, verbose=False, loss_scale_factor=1.0 / step_tokens, total_tokens_per_step=step_tokens)
 
     step_loss = 0.0
     #for s in train_seqs:
