@@ -38,8 +38,19 @@ static double solve_scalar(int T, int N, int k, const double *compute,
   }
 
   for (int i = 0; i < T; i++) {
-    deadlines[i] =
-        dead_ticks; // Global deadline only (Relaxed Buffer Constraint)
+    // 1. Start with the Global Deadline
+    int d = dead_ticks;
+
+    // 2. The Hard Buffer Constraint
+    // Task i must finish before Task i+N arrives.
+    // If it finishes later, the buffer overflows -> INVALID.
+    if (i + N < T) {
+      if (arrivals[i + N] < d) {
+        d = arrivals[i + N];
+      }
+    }
+
+    deadlines[i] = d;
   }
 
   // 2. Precompute Options
@@ -249,8 +260,19 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
   }
 
   for (int i = 0; i < T; i++) {
-    deadlines[i] =
-        dead_ticks; // Global deadline only (Relaxed Buffer Constraint)
+    // 1. Start with the Global Deadline
+    int d = dead_ticks;
+
+    // 2. The Hard Buffer Constraint
+    // Task i must finish before Task i+N arrives.
+    // If it finishes later, the buffer overflows -> INVALID.
+    if (i + N < T) {
+      if (arrivals[i + N] < d) {
+        d = arrivals[i + N];
+      }
+    }
+
+    deadlines[i] = d;
   }
 
   FastOption *opts = (FastOption *)malloc(T * k * sizeof(FastOption));
