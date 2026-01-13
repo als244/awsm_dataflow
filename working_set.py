@@ -123,7 +123,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes, static_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3e9, leeway_host_mem_bytes=10e9, verbose=False, device_id=0):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3e9, leeway_host_mem_bytes=10e9, verbose=False, device_id=0, min_tokens_per_round=4096):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
@@ -196,6 +196,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## a decent heuristic for max potential tokens per round, though we want to find
     ## the smallest limit that still gives good performance
     max_tokens_per_round = int(min(recomp_lim_max_tokens_per_round, gpu_lim_max_tokens_per_round))
+
+    if max_tokens_per_round < max_seq_len:
+        raise ValueError(f"Could not find a valid configuration for seq len {max_seq_len}; estimating max tokens per round to be {max_tokens_per_round}")
     
     if verbose:
         print(f"[Working Set Log] Determined Max Tokens Per Round of {max_tokens_per_round} based on aggregate available memory of {remaining_total_mem / 1e9:.2f}GB")
@@ -203,14 +206,14 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## for usual seq lens ignore attention flops and try to have enough tokens to hide weight/gradient transfer latency
     ## this sets a good upper bound for number of tokens per round, then we can lessen this to fit within memory constraints
     ## might want a factor of 2 for the transfer duration to ensure no stalls during bwd, but this is normally good (also uss peak tflops instead of realistic/with recompute)
-    upper_bound_tokens_per_round_est = min(max_tokens_per_round, math.ceil((layer_transfer_duration_sec * est_tflops * 1e12) / matmul_flops_per_token))
+    target_upper_bound_tokens_per_round_est = min(max_tokens_per_round, math.ceil((layer_transfer_duration_sec * est_tflops * 1e12) / matmul_flops_per_token))
 
-    upper_bound_tokens_per_round = max(max_seq_len, prev_high_div(upper_bound_tokens_per_round_est))
+    target_upper_bound_tokens_per_round = max(min_tokens_per_round, prev_high_div(target_upper_bound_tokens_per_round_est))
 
     if verbose:
-        print(f"[Working Set Log] Determined Layer Transfer Time of {layer_transfer_duration_sec * 1e3:.2f} ms, Upper Bound of Tokens Per Round Est: {upper_bound_tokens_per_round_est}")
+        print(f"[Working Set Log] Determined Layer Transfer Time of {layer_transfer_duration_sec * 1e3:.2f} ms, Orig Target Tokens Per Round Est: {target_upper_bound_tokens_per_round}")
 
-    cur_tokens_per_round = min(max_global_batch_tokens, upper_bound_tokens_per_round)
+    cur_tokens_per_round = min(max_global_batch_tokens, target_upper_bound_tokens_per_round)
     
     ## we reuse gpu act buffer for optimizer state so require enough for 2 layers of this
     min_opt_state_bytes = 2 * backbone_opt_bytes
@@ -223,19 +226,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     ## Now decrease tokens per round until we fit within host memory constraints
     ## Inner loop is for determining chunk size which also satisfies GPU memory constraints
-    satisfied = False
-
-    options = []
     while not satisfied:
-
-        total_transition_bytes = cur_tokens_per_round * d_model * num_local_layers * residual_dtype.itemsize
-
-        if total_transition_bytes > (remaining_gpu_mem_bytes + remaining_host_mem_bytes + min_opt_state_bytes):
-            cur_tokens_per_round -= 1024
-            if cur_tokens_per_round < max_seq_len:
-                raise ValueError(f"Could not find a valid configuration for seq len {max_seq_len}")
-            cur_tokens_per_round = prev_high_div(cur_tokens_per_round)
-            continue
 
         divisors = get_divisors(cur_tokens_per_round)
         divisors.sort(reverse=True)
@@ -249,9 +240,13 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
                 if act_required_gpu_bytes < remaining_gpu_mem_bytes:
                     max_chunk_size = potential_chunk_size
                     target_tokens_per_round = cur_tokens_per_round
-                    satisfied = True
-                    
                     break
+
+        ### arbitrary; we choose target tokens per round from list of high divisors in utils.py anyways
+        cur_tokens_per_round -= 1024
+
+        if cur_tokens_per_round < min_tokens_per_round:
+            raise ValueError(f"Error: Not enough memory to run with min tokens per round of: {min_tokens_per_round}")
 
     est_num_chunks = math.ceil(target_tokens_per_round / max_chunk_size)
     full_act_slot_size = get_full_act_slot_size_bytes(model_dims, max_chunk_size)

@@ -10,7 +10,7 @@ _cudart = ctypes.CDLL('libcudart.so')
 _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
 
 class ActiveModel:
-    def __init__(self, model_name, model_layers, working_set_config, local_config, chunk_metadata_func, embed_layer=None, head_layer=None, to_train=True, local_device="cuda:0", group_config=None):
+    def __init__(self, model_name, model_layers, working_set_config, local_config, hardware_env, chunk_metadata_func, embed_layer=None, head_layer=None, to_train=True, local_device="cuda:0", group_config=None):
         self.model_name = model_name
         self.working_set_config = working_set_config
         self.to_train = to_train
@@ -21,6 +21,7 @@ class ActiveModel:
         self.embed_layer = embed_layer
         self.head_layer = head_layer
         self.chunk_metadata_func = chunk_metadata_func
+        self.hardware_env = hardware_env
 
         self.cpu_model_weights = {}
         self.cpu_grad_weights = {}

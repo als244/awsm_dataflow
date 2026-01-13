@@ -20,6 +20,7 @@ class TransformerMoELayer():
         self.is_muon = is_muon
         self.secondary_compute_stream = secondary_compute_stream
         self.expert_hist = torch.zeros(self.model_dims["num_routed_experts"], dtype=torch.int64, device="cpu")
+        self.max_saved_activations_level = 3
     
     def forward(self, X, chunk_metadata, weights, base_act_slot, fwd_context):
 
@@ -1268,7 +1269,7 @@ class TransformerMoELayer():
     def make_act_slot(self, num_tokens, saved_level, buffer=None, device="cpu", pin_memory=True):
 
         if saved_level is None:
-            saved_level = 3
+            saved_level = self.max_saved_activations_level
 
         if device != "cpu":
             pin_memory = False
@@ -1378,7 +1379,20 @@ class TransformerMoELayer():
 
         return act_slot, total_size
 
-    def get_act_slot_size(self, num_tokens):
+    def get_act_slot_size(self, num_tokens, saved_level=None):
+
+        total_size = 0
+
+        if saved_level is None:
+            saved_level = self.max_saved_activations_level
+
+        resid_dtype = get_torch_dtype(self.model_dims["datatypes"]["resid_dtype"])
+        router_dtype = get_torch_dtype(self.model_dims["datatypes"]["router_dtype"])
+
+        ## assume non-router matmul activations are same datatype as resid
+        attn_act_dtype = resid_dtype
+        ffn_act_dtype = resid_dtype
+
         d_model = self.model_dims["d_model"]
         n_heads = self.model_dims["n_heads"]
         n_kv_heads = self.model_dims["n_kv_heads"]
@@ -1387,33 +1401,51 @@ class TransformerMoELayer():
         num_experts = self.model_dims["num_routed_experts"]
         top_k = self.model_dims["top_k"]
 
-        if "attn_act_dtype" in self.model_hyperparams:
-            attn_act_dtype = self.model_hyperparams["attn_act_dtype"]
-        else:
-            attn_act_dtype = torch.bfloat16
+        ## Minimum saved level
 
-        if "ffn_act_dtype" in self.model_hyperparams:
-            ffn_act_dtype = self.model_hyperparams["ffn_act_dtype"]
-        else:
-            ffn_act_dtype = torch.bfloat16
-
+        ## regardless of norm dtype, always saved rstd as fp32
         attn_norm_rstd_size = num_tokens * torch.float32.itemsize
         ffn_norm_rstd_size = num_tokens * torch.float32.itemsize
         x_inp_size = num_tokens * d_model * attn_act_dtype.itemsize
         xk_size = num_tokens * n_kv_heads * head_dim * attn_act_dtype.itemsize
         xv_size = num_tokens * n_kv_heads * head_dim * attn_act_dtype.itemsize
-        x_router_size = num_tokens * num_experts * torch.bfloat16.itemsize
+        x_router_size = num_tokens * num_experts * router_dtype.itemsize
         expert_counts_size = num_experts * torch.int32.itemsize
-        router_weights_size = num_tokens * top_k * torch.bfloat16.itemsize
+        router_weights_size = num_tokens * top_k * router_dtype.itemsize
         chosen_experts_size = num_tokens * top_k * torch.int32.itemsize
-        scattered_router_weights_size = num_tokens * top_k * torch.bfloat16.itemsize
+        scattered_router_weights_size = num_tokens * top_k * router_dtype.itemsize
+
+        total_size += attn_norm_rstd_size + ffn_norm_rstd_size + x_inp_size + xk_size + xv_size + x_router_size + expert_counts_size + router_weights_size + chosen_experts_size + scattered_router_weights_size
+
+        if saved_level == 0:
+            return total_size
+        
+        
         attn_result_size = num_tokens * n_heads * head_dim * attn_act_dtype.itemsize
         softmax_lse_size = n_heads * num_tokens * torch.float32.itemsize
+
+        total_size += attn_result_size + softmax_lse_size
+        
+        if saved_level == 1:
+            return total_size
+
+        
         xq_size = num_tokens * n_heads * head_dim * attn_act_dtype.itemsize
         xo_size = num_tokens * d_model * attn_act_dtype.itemsize
+
+        total_size += xq_size + xo_size
+
+        if saved_level == 2:
+            return total_size
+
         x_up_size = num_tokens * top_k * 2 * expert_dim * ffn_act_dtype.itemsize
 
-        return attn_norm_rstd_size + ffn_norm_rstd_size + x_inp_size + xk_size + xv_size + x_router_size + expert_counts_size + router_weights_size + chosen_experts_size + scattered_router_weights_size + attn_result_size + softmax_lse_size + xq_size + xo_size + x_up_size
+        total_size += x_up_size
+
+        if saved_level == 3:
+            return total_size
+
+        return total_size
 
     def send_activations_home(self, home_act_slot, computed_act_slot, save_activations_level):
 

@@ -15,6 +15,7 @@ class TransformerLayer():
         self.step_num = 0
         self.is_muon = is_muon
         self.secondary_compute_stream = secondary_compute_stream
+        self.max_saved_activations_level = 3
     
     def forward(self, X, chunk_metadata, weights, base_act_slot, fwd_context):
 
@@ -493,15 +494,15 @@ class TransformerLayer():
 
         if buffer is None:
             return {
-                f"{prefix}attn_norm": torch.zeros(d_model, device=device, dtype=dtype_mapping[prefix + "attn_norm"], pin_memory=pin_memory),
-                f"{prefix}q": torch.zeros(d_model, n_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "q"], pin_memory=pin_memory),
-                f"{prefix}k": torch.zeros(d_model, n_kv_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "k"], pin_memory=pin_memory),
-                f"{prefix}v": torch.zeros(d_model, n_kv_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "v"], pin_memory=pin_memory),
-                f"{prefix}o": torch.zeros(n_heads * head_dim, d_model, device=device, dtype=dtype_mapping[prefix + "o"], pin_memory=pin_memory),
-                f"{prefix}ffn_norm": torch.zeros(d_model, device=device, dtype=dtype_mapping[prefix + "ffn_norm"], pin_memory=pin_memory),
-                f"{prefix}1": torch.zeros(d_model, expert_dim, device=device, dtype=dtype_mapping[prefix + "1"], pin_memory=pin_memory),
-                f"{prefix}3": torch.zeros(d_model, expert_dim, device=device, dtype=dtype_mapping[prefix + "3"], pin_memory=pin_memory),
-                f"{prefix}2": torch.zeros(expert_dim, d_model, device=device, dtype=dtype_mapping[prefix + "2"], pin_memory=pin_memory),
+                f"{prefix}attn_norm": pin_tensor(torch.zeros(d_model, device=device, dtype=dtype_mapping[prefix + "attn_norm"])),
+                f"{prefix}q": pin_tensor(torch.zeros(d_model, n_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "q"])),
+                f"{prefix}k": pin_tensor(torch.zeros(d_model, n_kv_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "k"])),
+                f"{prefix}v": pin_tensor(torch.zeros(d_model, n_kv_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "v"])),
+                f"{prefix}o": pin_tensor(torch.zeros(n_heads * head_dim, d_model, device=device, dtype=dtype_mapping[prefix + "o"])),
+                f"{prefix}ffn_norm": pin_tensor(torch.zeros(d_model, device=device, dtype=dtype_mapping[prefix + "ffn_norm"])),
+                f"{prefix}1": pin_tensor(torch.zeros(d_model, expert_dim, device=device, dtype=dtype_mapping[prefix + "1"])),
+                f"{prefix}3": pin_tensor(torch.zeros(d_model, expert_dim, device=device, dtype=dtype_mapping[prefix + "3"])),
+                f"{prefix}2": pin_tensor(torch.zeros(expert_dim, d_model, device=device, dtype=dtype_mapping[prefix + "2"])),
             }
         else:
 
@@ -569,17 +570,17 @@ class TransformerLayer():
         cur_offset = 0
         if buffer is None:
             for prefix in prefixes:
-                opt_layer[prefix + "attn_norm"] = torch.zeros(d_model, device=device, dtype=dtype_mapping[prefix + "attn_norm"], pin_memory=pin_memory)
+                opt_layer[prefix + "attn_norm"] = pin_tensor(torch.zeros(d_model, device=device, dtype=dtype_mapping[prefix + "attn_norm"]))
                 if prefix == "o_m_" or not self.is_muon:
-                    opt_layer[prefix + "q"] = torch.zeros(d_model, n_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "q"], pin_memory=pin_memory)
-                    opt_layer[prefix + "k"] = torch.zeros(d_model, n_kv_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "k"], pin_memory=pin_memory)
-                    opt_layer[prefix + "v"] = torch.zeros(d_model, n_kv_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "v"], pin_memory=pin_memory)
-                    opt_layer[prefix + "o"] = torch.zeros(n_heads * head_dim, d_model, device=device, dtype=dtype_mapping[prefix + "o"], pin_memory=pin_memory)
-                opt_layer[prefix + "ffn_norm"] = torch.zeros(d_model, device=device, dtype=dtype_mapping[prefix + "ffn_norm"], pin_memory=pin_memory)
+                    opt_layer[prefix + "q"] = pin_tensor(torch.zeros(d_model, n_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "q"]))
+                    opt_layer[prefix + "k"] = pin_tensor(torch.zeros(d_model, n_kv_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "k"]))
+                    opt_layer[prefix + "v"] = pin_tensor(torch.zeros(d_model, n_kv_heads * head_dim, device=device, dtype=dtype_mapping[prefix + "v"]))
+                    opt_layer[prefix + "o"] = pin_tensor(torch.zeros(n_heads * head_dim, d_model, device=device, dtype=dtype_mapping[prefix + "o"]))
+                opt_layer[prefix + "ffn_norm"] = pin_tensor(torch.zeros(d_model, device=device, dtype=dtype_mapping[prefix + "ffn_norm"]))
                 if prefix == "o_m_" or not self.is_muon:
-                    opt_layer[prefix + "1"] = torch.zeros(d_model, expert_dim, device=device, dtype=dtype_mapping[prefix + "1"], pin_memory=pin_memory)
-                    opt_layer[prefix + "3"] = torch.zeros(d_model, expert_dim, device=device, dtype=dtype_mapping[prefix + "3"], pin_memory=pin_memory)
-                    opt_layer[prefix + "2"] = torch.zeros(expert_dim, d_model, device=device, dtype=dtype_mapping[prefix + "2"], pin_memory=pin_memory)
+                    opt_layer[prefix + "1"] = pin_tensor(torch.zeros(d_model, expert_dim, device=device, dtype=dtype_mapping[prefix + "1"]))
+                    opt_layer[prefix + "3"] = pin_tensor(torch.zeros(d_model, expert_dim, device=device, dtype=dtype_mapping[prefix + "3"]))
+                    opt_layer[prefix + "2"] = pin_tensor(torch.zeros(expert_dim, d_model, device=device, dtype=dtype_mapping[prefix + "2"]))
         else:
             cur_offset = 0
             for prefix in prefixes:
@@ -608,23 +609,33 @@ class TransformerLayer():
     
     def init_weights(self, weights):
         
-        torch.ones(weights["w_attn_norm"].shape, out=weights["w_attn_norm"])
-        torch.ones(weights["w_ffn_norm"].shape, out=weights["w_ffn_norm"])
+        ## Using Pytorch default which is normal with 1 / sqrt(fan in)
+        # 1. Norms → identity
+        weights["w_attn_norm"].fill_(1.0)
+        weights["w_ffn_norm"].fill_(1.0)
 
-        ## PyTorch linear layers are initialialized uniform(-1/sqrt(in_features)), 1/sqrt(in_features))
-        ## Other papers use different strategy of normal with std dev
+        # 2. Base stds
+        model_std = 1 / np.sqrt(self.model_dims["d_model"])
+        attn_dim = self.model_dims["n_heads"] * self.model_dims["head_dim"]
+        attn_out_std = 1 / np.sqrt(attn_dim)
+        expert_std = 1 / np.sqrt(self.model_dims["expert_dim"])
 
-        n_heads = self.model_dims["n_heads"]
-        head_dim = self.model_dims["head_dim"]
+        # 3. Residual scaling factor
+        #resid_scale = 1 / np.sqrt(2 * self.model_dims["n_layers"])
+        resid_scale = 1.0
 
+        # 4. Input projections (no residual scaling)
+        weights["w_q"].normal_(mean=0.0, std=model_std * std_factor)
+        weights["w_k"].normal_(mean=0.0, std=model_std * std_factor)
+        weights["w_v"].normal_(mean=0.0, std=model_std * std_factor)
+        weights["w_1"].normal_(mean=0.0, std=model_std * std_factor)
+        weights["w_3"].normal_(mean=0.0, std=model_std * std_factor)
 
-        weights["w_q"].uniform_(-1.0 / np.sqrt(self.model_dims["d_model"]), 1.0 / np.sqrt(self.model_dims["d_model"]))
-        weights["w_k"].uniform_(-1.0 / np.sqrt(self.model_dims["d_model"]), 1.0 / np.sqrt(self.model_dims["d_model"]))
-        weights["w_v"].uniform_(-1.0 / np.sqrt(self.model_dims["d_model"]), 1.0 / np.sqrt(self.model_dims["d_model"]))
-        weights["w_o"].uniform_(-1.0 / np.sqrt(n_heads * head_dim), 1.0 / np.sqrt(n_heads * head_dim))
-        weights["w_1"].uniform_(-1.0 / np.sqrt(self.model_dims["d_model"]), 1.0 / np.sqrt(self.model_dims["d_model"]))
-        weights["w_3"].uniform_(-1.0 / np.sqrt(self.model_dims["d_model"]), 1.0 / np.sqrt(self.model_dims["d_model"]))
-        weights["w_2"].uniform_(-1.0 / np.sqrt(self.model_dims["expert_dim"]), 1.0 / np.sqrt(self.model_dims["expert_dim"]))
+        # 5. Output projections (WITH residual scaling)
+        weights["w_o"].normal_(mean=0.0, std=attn_out_std * resid_scale * std_factor)
+        weights["w_2"].normal_(mean=0.0, std=expert_std * resid_scale * std_factor)
+
+        return weights
     
     def load(self, model_path, buffer = None, device = "cpu", pin_memory = True, is_opt=False, is_grad=False, dtype_mapping = None):
 
@@ -730,7 +741,7 @@ class TransformerLayer():
     def make_act_slot(self, num_tokens, saved_level, buffer=None, device="cpu", pin_memory=True):
 
         if saved_level is None:
-            saved_level = 3
+            saved_level = self.max_saved_activations_level
 
         if device != "cpu":
             pin_memory = False
@@ -741,35 +752,33 @@ class TransformerLayer():
         head_dim = self.model_dims["head_dim"]
         expert_dim = self.model_dims["expert_dim"]
 
-        if "attn_act_dtype" in self.model_hyperparams:
-            attn_act_dtype = self.model_hyperparams["attn_act_dtype"]
-        else:
-            attn_act_dtype = torch.bfloat16
+        resid_dtype = self.model_dims["datatypes"]["residual"]
 
-        if "ffn_act_dtype" in self.model_hyperparams:
-            ffn_act_dtype = self.model_hyperparams["ffn_act_dtype"]
-        else:
-            ffn_act_dtype = torch.bfloat16
+        ## assume activations are the same as residual
+        attn_act_dtype = resid_dtype
+        ffn_act_dtype = resid_dtype
 
         act_slot = {}
         if buffer is None:
 
         
-            act_slot["attn_norm_rstd"] = torch.zeros(num_tokens, 1, device=device, dtype=torch.float32, pin_memory=pin_memory)
-            act_slot["ffn_norm_rstd"] = torch.zeros(num_tokens, 1, device=device, dtype=torch.float32, pin_memory=pin_memory)
-            act_slot["x_inp"] = torch.zeros(num_tokens, d_model, device=device, dtype=torch.bfloat16, pin_memory=pin_memory)
-            act_slot["xk"] = torch.zeros(num_tokens, n_kv_heads, head_dim, device=device, dtype=attn_act_dtype, pin_memory=pin_memory)
-            act_slot["xv"] = torch.zeros(num_tokens, n_kv_heads, head_dim, device=device, dtype=attn_act_dtype, pin_memory=pin_memory)
+            act_slot["attn_norm_rstd"] = pin_tensor(torch.zeros(num_tokens, 1, device=device, dtype=torch.float32))
+            act_slot["ffn_norm_rstd"] = pin_tensor(torch.zeros(num_tokens, 1, device=device, dtype=torch.float32))
+            act_slot["x_inp"] = pin_tensor(torch.zeros(num_tokens, d_model, device=device, dtype=torch.bfloat16))
+            act_slot["xk"] = pin_tensor(torch.zeros(num_tokens, n_kv_heads, head_dim, device=device, dtype=attn_act_dtype))
+            act_slot["xv"] = pin_tensor(torch.zeros(num_tokens, n_kv_heads, head_dim, device=device, dtype=attn_act_dtype))
             
             if saved_level >= 1:
-                act_slot["attn_result"] = torch.zeros(num_tokens, n_heads, head_dim, device=device, dtype=attn_act_dtype, pin_memory=pin_memory)
-                act_slot["softmax_lse"] = torch.zeros(n_heads, num_tokens, device=device, dtype=torch.float32, pin_memory=pin_memory)
-                act_slot["xq"] = torch.zeros(num_tokens, n_heads, head_dim, device=device, dtype=attn_act_dtype, pin_memory=pin_memory)
-                act_slot["xo"] = torch.zeros(num_tokens, d_model, device=device, dtype=attn_act_dtype, pin_memory=pin_memory)
-
+                act_slot["attn_result"] = pin_tensor(torch.zeros(num_tokens, n_heads, head_dim, device=device, dtype=attn_act_dtype))
+                act_slot["softmax_lse"] = pin_tensor(torch.zeros(n_heads, num_tokens, device=device, dtype=torch.float32))
+                
             if saved_level >= 2:
-                act_slot["x1"] = torch.zeros(num_tokens, expert_dim, device=device, dtype=ffn_act_dtype, pin_memory=pin_memory)
-                act_slot["x3"] = torch.zeros(num_tokens, expert_dim, device=device, dtype=ffn_act_dtype, pin_memory=pin_memory)
+                act_slot["xq"] = pin_tensor(torch.zeros(num_tokens, n_heads, head_dim, device=device, dtype=attn_act_dtype))
+                act_slot["xo"] = pin_tensor(torch.zeros(num_tokens, d_model, device=device, dtype=attn_act_dtype))
+
+            if saved_level >= 3:
+                act_slot["x1"] = pin_tensor(torch.zeros(num_tokens, expert_dim, device=device, dtype=ffn_act_dtype))
+                act_slot["x3"] = pin_tensor(torch.zeros(num_tokens, expert_dim, device=device, dtype=ffn_act_dtype))
 
 
         else:
@@ -821,36 +830,86 @@ class TransformerLayer():
 
         return act_slot, total_size
 
-    def get_act_slot_size(self, num_tokens):
+    def get_act_slot_size(self, num_tokens, saved_level=None):
+
+        total_size = 0
+
+        if saved_level is None:
+            saved_level = self.max_saved_activations_level
+
+        # 1. Setup Dims
         d_model = self.model_dims["d_model"]
         n_heads = self.model_dims["n_heads"]
         n_kv_heads = self.model_dims["n_kv_heads"]
         head_dim = self.model_dims["head_dim"]
-        expert_dim = self.model_dims["expert_dim"]
+        # In dense layers, 'expert_dim' usually refers to the FFN intermediate size
+        expert_dim = self.model_dims["expert_dim"] 
 
-        if "attn_act_dtype" in self.model_hyperparams:
-            attn_act_dtype = self.model_hyperparams["attn_act_dtype"]
-        else:
-            attn_act_dtype = torch.bfloat16
+        # 2. Setup Dtypes
+        # We mirror the logic in make_act_slot to ensure sizes match exactly
+        resid_dtype = self.model_dims["datatypes"]["residual"]
+        
+        # In your make_act_slot, these are set to resid_dtype
+        attn_act_dtype = resid_dtype
+        ffn_act_dtype = resid_dtype
 
-        if "ffn_act_dtype" in self.model_hyperparams:
-            ffn_act_dtype = self.model_hyperparams["ffn_act_dtype"]
-        else:
-            ffn_act_dtype = torch.bfloat16
-
-        attn_norm_rtsd_size = num_tokens * torch.float32.itemsize
-        ffn_norm_rtsd_size = num_tokens * torch.float32.itemsize
-        x_inp_size = num_tokens * d_model * attn_act_dtype.itemsize
+        # ------------------------------------------------------------------
+        # Level 0: Base Activations (Always Saved)
+        # ------------------------------------------------------------------
+        
+        # Note: make_act_slot uses hardcoded torch.float32 for norms
+        attn_norm_rstd_size = num_tokens * torch.float32.itemsize
+        ffn_norm_rstd_size = num_tokens * torch.float32.itemsize
+        
+        # Note: make_act_slot uses hardcoded torch.bfloat16 for x_inp
+        x_inp_size = num_tokens * d_model * torch.bfloat16.itemsize
+        
         xk_size = num_tokens * n_kv_heads * head_dim * attn_act_dtype.itemsize
         xv_size = num_tokens * n_kv_heads * head_dim * attn_act_dtype.itemsize
+
+        total_size += (attn_norm_rstd_size + ffn_norm_rstd_size + 
+                       x_inp_size + xk_size + xv_size)
+
+        if saved_level == 0:
+            return total_size
+
+        # ------------------------------------------------------------------
+        # Level 1: Attention Results
+        # ------------------------------------------------------------------
+        
         attn_result_size = num_tokens * n_heads * head_dim * attn_act_dtype.itemsize
+        # make_act_slot uses hardcoded torch.float32 for softmax_lse
         softmax_lse_size = n_heads * num_tokens * torch.float32.itemsize
+
+        total_size += attn_result_size + softmax_lse_size
+
+        if saved_level == 1:
+            return total_size
+
+        # ------------------------------------------------------------------
+        # Level 2: Attention Projections (Q and Output)
+        # ------------------------------------------------------------------
+        
         xq_size = num_tokens * n_heads * head_dim * attn_act_dtype.itemsize
         xo_size = num_tokens * d_model * attn_act_dtype.itemsize
+
+        total_size += xq_size + xo_size
+
+        if saved_level == 2:
+            return total_size
+
+        # ------------------------------------------------------------------
+        # Level 3: FFN Internals
+        # ------------------------------------------------------------------
+        
+        # x1 and x3 are usually the Gate and Up projections in a SwiGLU FFN
         x1_size = num_tokens * expert_dim * ffn_act_dtype.itemsize
         x3_size = num_tokens * expert_dim * ffn_act_dtype.itemsize
 
-        return attn_norm_rtsd_size + ffn_norm_rtsd_size + x_inp_size + xk_size + xv_size + attn_result_size + softmax_lse_size + xq_size + xo_size + x1_size + x3_size
+        total_size += x1_size + x3_size
+
+        # Level 3 is generally the max, return total
+        return total_size
 
     def send_activations_home(self, home_act_slot, computed_act_slot, save_activations_level):
 
@@ -867,8 +926,9 @@ class TransformerLayer():
             ## START OF FULL SAVE (SAVED_LEVEL >= 2)
             "xq": 2,
             "xo": 2,
-            "x1": 2,
-            "x3": 2,
+            ## START OF MAX SAVE (SAVED_LEVEL >= 3)
+            "x1": 3,
+            "x3": 3,
         }
 
         for k, v in computed_act_slot.items():
