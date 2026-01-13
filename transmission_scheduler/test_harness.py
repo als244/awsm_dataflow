@@ -3,7 +3,7 @@ import numpy as np
 from transmission_scheduler import TransmissionScheduler
 
 def run_test():
-    sched = Scheduler()
+    sched = TransmissionScheduler()
     T, N, k = 64, 10, 4
     
     compute = np.random.uniform(8.0, 12.0, size=T)
