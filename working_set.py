@@ -225,9 +225,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     if min_opt_state_bytes > remaining_gpu_mem_bytes:
         raise ValueError("Error: Not enough GPU memory to hold 2 layers of weights, grads, and optimizer state")
 
-    ## Now decrease tokens per round until we fit within host memory constraints
+    ## We should already be good for overall host memory constraints with valid max_tokens_per_round
+    ## but we need to determine valid chunk size; too large a chunk size will incur excess temporary memory usage
+    ## (particularly for MoE where we have staging buffers for scatter/gather)
     ## Inner loop is for determining chunk size which also satisfies GPU memory constraints
-    while not satisfied:
+    while True:
 
         divisors = get_divisors(cur_tokens_per_round)
         divisors.sort(reverse=True)
