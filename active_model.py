@@ -1120,7 +1120,7 @@ class ActiveModel:
                             self.inbound_stream.wait_event(self.home_act_slot_available_events[(next_act_pre_layer_id, next_act_pre_chunk_id)])
                             with self.inbound_stream:
                                 self.profiler.range_push(f"Prefetch Activations: Layer {next_act_pre_layer_id}, Chunk {next_act_pre_chunk_id}")
-                                self.dev_act_slot_mapping[(next_act_pre_layer_id, next_act_pre_chunk_id)] = layer.fetch_activations(self.act_slot_gpu[cur_act_slot_idx], self.cpu_act_slots[(next_act_pre_layer_id, next_act_pre_chunk_id)], next_chunk["chunk_metadata"],
+                                self.dev_act_slot_mapping[(next_act_pre_layer_id, next_act_pre_chunk_id)] = layer.fetch_activations(self.act_slot_gpu[cur_act_slot_idx], self.cpu_act_slots[(next_act_pre_layer_id, next_act_pre_chunk_id)], chunk_mapping[next_act_pre_chunk_id]["chunk_metadata"],
     next_act_pre_layer_id)
                                 self.inbound_act_slot_ready_events[(next_act_pre_layer_id, next_act_pre_chunk_id)] = self.inbound_stream.record_event()
                                 self.profiler.range_pop()
