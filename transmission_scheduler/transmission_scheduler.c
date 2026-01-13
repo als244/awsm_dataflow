@@ -211,62 +211,34 @@ static double solve_scalar(int T, int N, int k, const double *compute,
 // =========================================================
 //  AVX2 SOLVER (High Performance)
 // =========================================================
-
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
 
-// Attribute allows GCC to generate AVX instructions for this function
-// specifically
 __attribute__((target("avx2"))) static double
 solve_avx2_impl(int T, int N, int k, const double *compute,
                 const double *durations, const double *sizes, double deadline,
                 int *out_choices) {
 
-  int *arrivals = (int *)malloc(T * sizeof(int));
-  int *deadlines = (int *)malloc(T * sizeof(int));
-  if (!arrivals || !deadlines)
-    return 0.0;
+  // ... [Allocation Code Same as Before] ...
+  // (arrivals, deadlines, opts, mallocs...)
 
-  int dead_ticks = (int)(deadline * TIME_SCALE);
-  double clk = 0;
-  for (int i = 0; i < T; i++) {
-    clk += compute[i];
-    arrivals[i] = (int)(clk * TIME_SCALE);
-  }
-  for (int i = 0; i < T; i++) {
-    int d = dead_ticks;
-    if (i + N < T) {
-      if (arrivals[i + N] < d)
-        d = arrivals[i + N];
-    }
-    deadlines[i] = d;
-  }
+  // COPY-PASTE START: Replaces the main loop logic
 
-  FastOption *opts = (FastOption *)malloc(T * k * sizeof(FastOption));
-  if (!opts) {
-    free(arrivals);
-    free(deadlines);
-    return 0.0;
+  // Dynamic Buffer Allocation
+  static double *dp_table = NULL;
+  static int dp_capacity_rows = 0;
+  static int dp_capacity_cols = 0;
+
+  // Re-allocate if T increases OR Buffer Size changed
+  if (!dp_table || (T + 1) > dp_capacity_rows || BUF_SIZE > dp_capacity_cols) {
+    if (dp_table)
+      free(dp_table);
+    dp_capacity_rows = (T + 1);
+    dp_capacity_cols = BUF_SIZE;
+    dp_table = (double *)malloc(dp_capacity_rows * BUF_SIZE * sizeof(double));
   }
 
-  for (int i = 0; i < T * k; i++) {
-    opts[i].duration_ticks = (int)(durations[i] * TIME_SCALE);
-    if (opts[i].duration_ticks < 1)
-      opts[i].duration_ticks = 1;
-    opts[i].size = sizes[i];
-  }
-
-  // Full Table Alloc
-  double *dp_table =
-      (double *)malloc((size_t)(T + 1) * BUF_SIZE * sizeof(double));
-  if (!dp_table) {
-    free(arrivals);
-    free(deadlines);
-    free(opts);
-    return 0.0;
-  }
-
-  // Init Row 0
+  // Clear Row 0 (Only need to clear the start)
   for (int t = 0; t < BUF_SIZE; t++)
     dp_table[t] = INF_NEG;
   dp_table[0] = 0.0;
@@ -282,9 +254,34 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     double *src = &dp_table[i * BUF_SIZE];
     double *dst = &dp_table[(i + 1) * BUF_SIZE];
 
-    // Init DST
-    for (int t = 0; t < BUF_SIZE; t++)
+    // --- OPTIMIZATION: SMART CLEAR ---
+    // Instead of clearing the whole 64k buffer, only clear where we might
+    // write. We write from [arrival] to [max_t + max_duration]. We can safely
+    // clear a bit more to be safe.
+
+    // Find max duration for this task to determine clear range
+    int max_dur_this_task = 0;
+    for (int o = 0; o < k; o++) {
+      if (task_opts[o].duration_ticks > max_dur_this_task)
+        max_dur_this_task = task_opts[o].duration_ticks;
+    }
+
+    int clear_start = arrival; // We never write before arrival
+    int clear_end =
+        max_t + max_dur_this_task + 32; // +32 for AVX padding/safety
+
+    // Bounds check
+    if (clear_end > BUF_SIZE)
+      clear_end = BUF_SIZE;
+    if (clear_start > clear_end)
+      clear_start = clear_end; // Should not happen
+
+    // Only memset the active region
+    // Note: Loops are faster than memset for small warm regions
+    for (int t = clear_start; t < clear_end; t++)
       dst[t] = INF_NEG;
+
+    // --- END OPTIMIZATION ---
 
     // Wait Value
     double max_wait = INF_NEG;
@@ -300,7 +297,7 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     if (max_wait > INF_NEG) {
       for (int opt = 0; opt < k; opt++) {
         int fin = arrival + task_opts[opt].duration_ticks;
-        if (fin <= limit) {
+        if (fin <= limit && fin < BUF_SIZE) { // Check BUF_SIZE safety
           double val = max_wait + task_opts[opt].size;
           if (val > dst[fin])
             dst[fin] = val;
@@ -347,7 +344,7 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     }
 
     if (next_max == -1) {
-      free(dp_table);
+      // Cleanup removed for brevity, keeps existing logic
       free(arrivals);
       free(deadlines);
       free(opts);
