@@ -8,6 +8,7 @@ from .ops import awsm_moe_sort, awsm_moe_scatter, awsm_moe_scatter_routing_weigh
 
 from .matmul_dispatchers import dispatcher, dispatcher_secondary
 from .mem_register import pin_tensor 
+from .utils import *
 
 class TransformerMoELayer():
 
