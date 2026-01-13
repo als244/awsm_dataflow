@@ -1179,7 +1179,7 @@ class ActiveModel:
                     with self.inbound_stream:
 
                         if self.zero_grad:
-                            self.profiler.range_push(f"Initializing Zero-Gradients: Layer {grad_layer_id}")
+                            self.profiler.range_push(f"Initializing Zero-Gradients: Layer {next_grad_layer_id}")
                             for name, tensor in self.grad_weights_gpu[cur_grad_weight_idx].items():
                                     tensor.zero_()
                             self.profiler.range_pop()
