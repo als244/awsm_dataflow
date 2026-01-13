@@ -18,15 +18,16 @@ all_model_dims = json.load(open("model_dims.json"))
 TO_PROFILE_BACKEND = False
 TO_PROFILE_TORCH_MEMORY = False
 MAX_STEPS = None
+TO_SAVE_ERROR = True
 
 DEVICE_ID = 0
-MAX_TOKENS_PER_STEP = 65536
+MAX_TOKENS_PER_STEP = 524288
 MIN_SEQ_LEN = 256
 MAX_SEQ_LEN = 8192
 USE_MUON = False
 SAVE_FINAL = False
 
-MODEL_CHOICE = "llama3_8B"
+MODEL_CHOICE = "olmoe_7Bx1B"
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
@@ -62,7 +63,7 @@ model_hyperparams = {
     "window_size_left": -1,
     "window_size_right": -1,
     "top_k": 4,
-    "load_bal_coeff": 0
+    "load_bal_coeff": 0.01
 }
 
 
@@ -79,7 +80,7 @@ opt_hyperparams = {
     "beta1": 0.95,
     "beta2": 0.98,
     "eps": 1e-8,
-    "weight_decay": 0,
+    "weight_decay": 0.1,
     "step_num": 0,
 }
 
@@ -267,7 +268,11 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
         print(f"ERROR: Average loss is 100!", flush=True)
         break
     
-    active_model.step(opt_hyperparams)
+    ret = active_model.step(opt_hyperparams)
+    
+    error_step = False
+    if ret != 0 and TO_SAVE_ERROR:
+        error_step = True
 
         
     end_time = time.time()
@@ -314,7 +319,9 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
 
     ## Saving full training step of step gradients for analysis
     step_save_path = f"{SAVE_MODEL_PATH}/step_{step_num}"
-    if (step_num in SAVE_STEPS) or ((SAVE_CHECKPOINT_FREQ > 0) and (step_num % SAVE_CHECKPOINT_FREQ == 0)):
+    if ((step_num in SAVE_STEPS) or ((SAVE_CHECKPOINT_FREQ > 0) and (step_num % SAVE_CHECKPOINT_FREQ == 0))) or error_step:
+        if error_step:
+            step_save_path += "_error"
         active_model.save(step_save_path, save_opt_state=True, save_gradients=True)
 
 print(f"\n\n\nSaving step stats to step_stats.pkl", flush=True)
