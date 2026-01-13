@@ -177,7 +177,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     est_mem_bw_gb_per_sec = baseline_hardware_env["basic_peak_mem_bandwidth_gb_per_sec"]
 
     if verbose:
-        print(f"[Working Set Log] Observed Layer Transfer Duration of {layer_transfer_duration_sec * 1e3:.2f} ms, Estimated TFLOPS: {est_tflops:.2f}, Estimated Memory Bandwidth: {est_mem_bw_gb_per_sec:.2f} GB/s")
+        print(f"[Working Set Log] Observed Layer Transfer Duration of {layer_transfer_duration_sec * 1e3:.2f} ms, Estimated Peak TFLOPS: {est_tflops:.2f}, Estimated Memory Bandwidth: {est_mem_bw_gb_per_sec:.2f} GB/s")
 
     matmul_flops_per_token = get_layer_matmul_flops_per_token(model_dims)
 
@@ -186,6 +186,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## need to store transitions
     d_model = model_dims["d_model"]
     residual_dtype = get_torch_dtype(model_dims["datatypes"]["residual"])
+
+    ## TODO: fix this to incorporate GPU transition table constraint along with context windows...
+    ## Should be significantly lower than currently reporting
     max_tokens_per_round = remaining_total_mem / (d_model * num_local_layers * residual_dtype.itemsize)
 
     if verbose:
@@ -193,20 +196,24 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     ## for usual seq lens ignore attention flops and try to have enough tokens to hide weight/gradient transfer latency
     ## this sets a good upper bound for number of tokens per round, then we can lessen this to fit within memory constraints
-    upper_bound_tokens_per_round = min(max_tokens_per_round, math.ceil((layer_transfer_duration_sec * est_tflops * 1e12) / matmul_flops_per_token))
+    ## might want a factor of 2 for the transfer duration to ensure no stalls during bwd, but this is normally good (also uss peak tflops instead of realistic/with recompute)
+    upper_bound_tokens_per_round_est = min(max_tokens_per_round, math.ceil((layer_transfer_duration_sec * est_tflops * 1e12) / matmul_flops_per_token))
 
-    upper_bound_tokens_per_round = max(max_seq_len, prev_high_div(upper_bound_tokens_per_round))
+    upper_bound_tokens_per_round = max(max_seq_len, prev_high_div(upper_bound_tokens_per_round_est))
 
     if verbose:
-        print(f"[Working Set Log] Determined Layer Transfer Time of {layer_transfer_duration_sec * 1e3:.2f} ms, Upper Bound of Tokens Per Round: {upper_bound_tokens_per_round}")
+        print(f"[Working Set Log] Determined Layer Transfer Time of {layer_transfer_duration_sec * 1e3:.2f} ms, Upper Bound of Tokens Per Round Est: {upper_bound_tokens_per_round_est}")
 
     cur_tokens_per_round = min(max_global_batch_tokens, upper_bound_tokens_per_round)
     
     ## we reuse gpu act buffer for optimizer state so require enough for 2 layers of this
     min_opt_state_bytes = 2 * backbone_opt_bytes
 
+    if verbose:
+        print(f"[Working Set Log] Min Opt State/GPU Act Buffer size of: {min_opt_state_bytes}")
+
     if min_opt_state_bytes > remaining_gpu_mem_bytes:
-        raise ValueError("Not enough GPU memory for optimizer state")
+        raise ValueError("Error: Not enough GPU memory to hold 2 layers of weights, grads, and optimizer state")
 
     ## Now decrease tokens per round until we fit within host memory constraints
     ## Inner loop is for determining chunk size which also satisfies GPU memory constraints
@@ -240,17 +247,19 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
                     
                     break
 
-    est_num_chunks = target_tokens_per_round // max_chunk_size
+    est_num_chunks = math.ceil(target_tokens_per_round / max_chunk_size)
     full_act_slot_size = get_full_act_slot_size_bytes(model_dims, max_chunk_size)
-
-    gpu_act_bytes = max(act_required_gpu_bytes - static_gpu_bytes, min_opt_state_bytes)
     
+    ## can use remaining bytes for act space
+    gpu_act_bytes = remaining_gpu_mem_bytes - static_gpu_bytes
+    
+    ## might not need to use all memory
     gpu_act_slots = int(max(1, min(est_num_chunks * num_local_layers, gpu_act_bytes // full_act_slot_size)))
 
-    
     gpu_act_buffer_size = gpu_act_slots * full_act_slot_size
     
-    assert gpu_act_buffer_size <= remaining_gpu_mem_bytes - static_gpu_bytes
+    ## we reuse gpu act buffer during opt step
+    assert gpu_act_buffer_size >= min_opt_state_bytes
 
     est_total_gpu_bytes = static_gpu_bytes + gpu_act_buffer_size + baseline_gpu_bytes
 
