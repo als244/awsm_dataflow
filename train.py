@@ -65,15 +65,16 @@ model_hyperparams = {
     "load_bal_coeff": 0
 }
 
-TOTAL_TOKENS = 4e9
+
+TOTAL_TOKENS = 2e9
 est_total_steps = TOTAL_TOKENS / MAX_TOKENS_PER_STEP
 
 opt_hyperparams = {
     "lr": 0,
     "max_lr": 3e-4,
-    "warmup_pct": 0,
-    "cooldown_pct": 0,
-    "final_lr": 3e-4,
+    "warmup_pct": 0.1,
+    "cooldown_pct": 0.2,
+    "final_lr": 1e-5,
     "est_total_steps": est_total_steps,
     "beta1": 0.95,
     "beta2": 0.98,
