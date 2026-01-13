@@ -229,7 +229,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## but we need to determine valid chunk size; too large a chunk size will incur excess temporary memory usage
     ## (particularly for MoE where we have staging buffers for scatter/gather)
     while True:
-
+        satisfied=False
         divisors = get_divisors(cur_tokens_per_round)
         divisors.sort(reverse=True)
         for potential_chunk_size in divisors:
@@ -238,17 +238,19 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
                 act_required_gpu_bytes, static_gpu_bytes = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, potential_chunk_size, num_chunks, training_config=training_config)
 
-                print(f"[Working Set Log] Potential Chunk Size of {potential_chunk_size}, Act Required GPU Bytes: {act_required_gpu_bytes / 1e9:.2f}GB, Static GPU Bytes: {static_gpu_bytes / 1e9:.2f}GB")
                 if act_required_gpu_bytes < remaining_gpu_mem_bytes:
+                    ### THESE ARE THE KEY VALUES WE ARE AFTER!
                     max_chunk_size = potential_chunk_size
                     target_tokens_per_round = cur_tokens_per_round
+                    satisfied=True
                     break
+        
+        if not satisfied:
+            ### arbitrary; we choose target tokens per round from list of high divisors in utils.py anyways
+            cur_tokens_per_round -= 1024
 
-        ### arbitrary; we choose target tokens per round from list of high divisors in utils.py anyways
-        cur_tokens_per_round -= 1024
-
-        if cur_tokens_per_round < min_tokens_per_round:
-            raise ValueError(f"Error: Not enough memory to run with min tokens per round of: {min_tokens_per_round}")
+            if cur_tokens_per_round < min_tokens_per_round:
+                raise ValueError(f"Error: Not enough memory to run with min tokens per round of: {min_tokens_per_round}")
 
     est_num_chunks = math.ceil(target_tokens_per_round / max_chunk_size)
     full_act_slot_size = get_full_act_slot_size_bytes(model_dims, max_chunk_size)
