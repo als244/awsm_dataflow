@@ -1,6 +1,7 @@
 from awsm_transformer import get_hardware_env
 from awsm_transformer import get_torch_dtype
 from awsm_transformer.utils import *
+from awsm_transformer.saved_activations_policy import get_transformer_saved_act_sizes
 import copy
 import math
 
