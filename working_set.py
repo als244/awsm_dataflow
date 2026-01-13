@@ -228,8 +228,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## We should already be good for overall host memory constraints with valid max_tokens_per_round
     ## but we need to determine valid chunk size; too large a chunk size will incur excess temporary memory usage
     ## (particularly for MoE where we have staging buffers for scatter/gather)
-    while True:
-        satisfied=False
+    satisfied=False
+    while not satisfied:
         divisors = get_divisors(cur_tokens_per_round)
         divisors.sort(reverse=True)
         for potential_chunk_size in divisors:
@@ -247,6 +247,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         
         if not satisfied:
             ### arbitrary; we choose target tokens per round from list of high divisors in utils.py anyways
+            ### try for different combination, though only the chunk size should matter here...
             cur_tokens_per_round -= 1024
 
             if cur_tokens_per_round < min_tokens_per_round:
