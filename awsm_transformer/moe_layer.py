@@ -1386,8 +1386,8 @@ class TransformerMoELayer():
         if saved_level is None:
             saved_level = self.max_saved_activations_level
 
-        resid_dtype = get_torch_dtype(self.model_dims["datatypes"]["resid_dtype"])
-        router_dtype = get_torch_dtype(self.model_dims["datatypes"]["router_dtype"])
+        resid_dtype = get_torch_dtype(self.model_dims["datatypes"]["residual"])
+        router_dtype = get_torch_dtype(self.model_dims["datatypes"]["router"])
 
         ## assume non-router matmul activations are same datatype as resid
         attn_act_dtype = resid_dtype
