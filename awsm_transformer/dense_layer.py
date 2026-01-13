@@ -885,7 +885,7 @@ class TransformerLayer():
                 home_act_slot[k].copy_(v, non_blocking=True)
 
     
-    def fetch_activations(self, base_act_slot, home_act_slot):
+    def fetch_activations(self, base_act_slot, home_act_slot, chunk_metadata, layer_id):
 
         act_slot = {}
         num_tokens = home_act_slot["x_inp"].shape[0]

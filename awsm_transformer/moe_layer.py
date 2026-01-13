@@ -1449,18 +1449,36 @@ class TransformerMoELayer():
                 continue
 
             if save_level <= save_activations_level:
-                home_act_slot[k].copy_(v, non_blocking=True)
+                if k == "x_up":
+                    home_up_act_slot = home_act_slot["x_up"]
+                    home_up_offset = 0
+                    num_experts = self.model_dims["num_routed_experts"]
+                    # Iterate in consistent order (0, 1, 2, ...) to match fetch_activations
+                    for expert_id in range(num_experts):
+                        if expert_id in v:
+                            expert_up = v[expert_id]
+                            if expert_up.shape[0] > 0:
+                                home_up_act_slot[home_up_offset:home_up_offset + expert_up.shape[0], :].copy_(expert_up, non_blocking=True)
+                                home_up_offset += expert_up.shape[0]
+                else:
+                    home_act_slot[k].copy_(v, non_blocking=True)
+
+
 
     
-    def fetch_activations(self, base_act_slot, home_act_slot):
+    def fetch_activations(self, base_act_slot, home_act_slot, chunk_metadata, layer_id):
 
         act_slot = {}
         num_tokens = home_act_slot["x_inp"].shape[0]
         top_k = self.model_dims["top_k"]
+        num_experts = self.model_dims["num_routed_experts"]
 
         ## use view of base act slot with the correct shape for this chunk
         for k, v in base_act_slot.items():
             if k not in home_act_slot:
+                continue
+            if k == "x_up":
+                # Handle separately below
                 continue
             if k == "expert_counts":
                 act_slot[k] = v
@@ -1474,7 +1492,26 @@ class TransformerMoELayer():
                 act_slot[k] = v
         
         for k, v in home_act_slot.items():
+            if k == "x_up":
+                continue
             act_slot[k].copy_(v, non_blocking=True)
+
+        # Reconstruct x_up as dict using expert_counts from metadata
+        if "x_up" in home_act_slot:
+            expert_counts_cpu = chunk_metadata["expert_counts_host"][layer_id]
+            
+            # Copy flat buffer to GPU
+            gpu_x_up_flat = base_act_slot["x_up"][:num_tokens * top_k, :]
+            gpu_x_up_flat.copy_(home_act_slot["x_up"], non_blocking=True)
+            
+            # Reconstruct dict with views into the flat buffer
+            act_slot["x_up"] = {}
+            cur_offset = 0
+            for expert_id in range(num_experts):
+                num_exp_tokens = expert_counts_cpu[expert_id].item()
+                if num_exp_tokens > 0:
+                    act_slot["x_up"][expert_id] = gpu_x_up_flat[cur_offset:cur_offset + num_exp_tokens, :]
+                    cur_offset += num_exp_tokens
 
         return act_slot
 
