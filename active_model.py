@@ -307,11 +307,12 @@ class ActiveModel:
     def destroy(self):
 
         ## clear host act/opt buffer
-        ret = _cudart.cudaHostUnregister(ctypes.c_void_p(self.cpu_act_buffer.data_ptr()))
-        if ret != 0:
-            print(f"Failed to unregsiter host act buffer at addr: {self.cpu_act_buffer.data_ptr()} of size {self.cpu_act_buffer_size}")
-        
-        del self.cpu_act_buffer
+        if self.cpu_act_buffer_size > 0:
+            ret = _cudart.cudaHostUnregister(ctypes.c_void_p(self.cpu_act_buffer.data_ptr()))
+            if ret != 0:
+                print(f"Failed to unregsiter host act buffer at addr: {self.cpu_act_buffer.data_ptr()} of size {self.cpu_act_buffer_size}")
+            
+            del self.cpu_act_buffer
 
         ## clear host model state
 
