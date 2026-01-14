@@ -628,15 +628,15 @@ class TransformerLayer():
         resid_scale = 1.0
 
         # 4. Input projections (no residual scaling)
-        weights["w_q"].normal_(mean=0.0, std=model_std * std_factor)
-        weights["w_k"].normal_(mean=0.0, std=model_std * std_factor)
-        weights["w_v"].normal_(mean=0.0, std=model_std * std_factor)
-        weights["w_1"].normal_(mean=0.0, std=model_std * std_factor)
-        weights["w_3"].normal_(mean=0.0, std=model_std * std_factor)
+        weights["w_q"].normal_(mean=0.0, std=model_std)
+        weights["w_k"].normal_(mean=0.0, std=model_std)
+        weights["w_v"].normal_(mean=0.0, std=model_std)
+        weights["w_1"].normal_(mean=0.0, std=model_std)
+        weights["w_3"].normal_(mean=0.0, std=model_std)
 
         # 5. Output projections (WITH residual scaling)
-        weights["w_o"].normal_(mean=0.0, std=attn_out_std * resid_scale * std_factor)
-        weights["w_2"].normal_(mean=0.0, std=expert_std * resid_scale * std_factor)
+        weights["w_o"].normal_(mean=0.0, std=attn_out_std * resid_scale)
+        weights["w_2"].normal_(mean=0.0, std=expert_std * resid_scale)
 
         return weights
     
