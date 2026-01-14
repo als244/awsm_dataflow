@@ -557,11 +557,11 @@ class ActiveModel:
                     chunk_metadata = chunk["chunk_metadata"]
                     chunk_id = chunk["id"]
                     total_fwd_flops, saved_fwd_flops = self.model_layers[layer_id].get_fwd_flops(chunk_metadata)
-                    compute_times[layer_num * total_chunks + chunk_id] = total_fwd_flops / (self.peak_tflops_est * 1e12)
+                    compute_times[layer_num * total_chunks + chunk_id] = (total_fwd_flops / (self.peak_tflops_est * 1e12)) * 1e3
                     for saved_level in range(num_saved_activation_levels):
                         recompute_flops = saved_fwd_flops[saved_level]
-                        recompute_time = recompute_flops / (self.peak_tflops_est * 1e12)
-                        saved_option_values[layer_num * total_chunks + chunk_id, saved_level] = recompute_time
+                        recompute_time_ms = recompute_flops / (self.peak_tflops_est * 1e12) * 1e3
+                        saved_option_values[layer_num * total_chunks + chunk_id, saved_level] = recompute_time_ms
 
         ### now for each chunk get the sizes of different levels of saved activations
         for layer_num in range(len(self.local_layer_ids)):
@@ -576,7 +576,7 @@ class ActiveModel:
                     for saved_level in range(num_saved_activation_levels):
                         saved_level_bytes = saved_act_sizes[saved_level]
                         saved_option_act_sizes[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes
-                        saved_option_transfer_durations[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes / (self.bw_est_gb_per_sec * 1e9)
+                        saved_option_transfer_durations[layer_num * total_chunks + chunk_id, saved_level] = (saved_level_bytes / (self.bw_est_gb_per_sec * 1e9)) * 1e3
 
 
         np.save("saved_act_dbg/compute_times.npy", compute_times)
