@@ -509,7 +509,7 @@ class ActiveModel:
         return
 
           
-    def determine_saved_levels(self, seq_groups, verbose=True):
+    def determine_saved_levels(self, seq_groups, verbose=False):
 
         total_chunks = sum([len(seq_group) for seq_group in seq_groups])
         total_round_tokens = 0
@@ -1318,8 +1318,6 @@ class ActiveModel:
                         if next_act_slot_prefetch[0] != -1:
                             next_act_pre_layer_ind, next_act_pre_chunk_id = next_act_slot_prefetch
                             next_act_pre_layer_id = self.local_layer_ids[next_act_pre_layer_ind]
-                            torch.cuda.synchronize()
-                            print("Next prefetch: ", (next_act_pre_layer_id, next_act_pre_chunk_id), flush=True)
                             self.inbound_stream.wait_stream(self.compute_stream)
                             self.inbound_stream.wait_event(self.home_act_slot_available_events[(next_act_pre_layer_id, next_act_pre_chunk_id)])
                             with self.inbound_stream:
