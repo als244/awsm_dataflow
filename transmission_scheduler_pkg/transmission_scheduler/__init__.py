@@ -107,7 +107,7 @@ class TransmissionScheduler:
         flat_durs = durations.flatten()
         flat_sizes = shifted_sizes.flatten()
         
-        val = self.lib.solve_scheduler(
+        raw_val = self.lib.solve_scheduler(
             T, N, k, compute, flat_durs, flat_sizes, safe_deadline, choices
         )
         
