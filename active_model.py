@@ -551,6 +551,8 @@ class ActiveModel:
 
         ### Need to profile this prep section to see if it's a bottleneck
 
+        total_fwd_time_ms = 0
+
         for layer_num in range(len(self.local_layer_ids)):
             layer_id = self.local_layer_ids[layer_num]
             for seq_group in seq_groups:
@@ -559,6 +561,7 @@ class ActiveModel:
                     chunk_id = chunk["id"]
                     total_fwd_flops, saved_fwd_flops = self.model_layers[layer_id].get_fwd_flops(chunk_metadata)
                     compute_times[layer_num * total_chunks + chunk_id] = (total_fwd_flops / (self.peak_tflops_est * 1e12)) * 1e3
+                    total_fwd_time_ms += compute_times[layer_num * total_chunks + chunk_id]
                     for saved_level in range(num_saved_activation_levels):
                         recompute_flops = saved_fwd_flops[saved_level]
                         recompute_time_ms = recompute_flops / (self.peak_tflops_est * 1e12) * 1e3
@@ -599,8 +602,10 @@ class ActiveModel:
         else:
 
             if verbose:
-                print(f"SAVED ACT CHOICES: {saved_act_choices}")
-                print(f"OPTIONAL RECOMPUTE TIME AVOIDED: {optional_recompute_time_avoided}")
+                print(f"Est Total Forward Time: {total_fwd_time_ms} ms")
+                print(f"Initial Saved Act Choices: {saved_act_choices[:-self.n_gpu_act_slots]}")
+                print(f"Initial Optional Recompute Time Avoided: {optional_recompute_time_avoided} ms")
+                
             ### override the last n_gpu_act_slots with saving on device => level -1
             key_saved_act_choices = saved_act_choices[:-self.n_gpu_act_slots]
 
@@ -635,11 +640,15 @@ class ActiveModel:
         ### ALso TODO: could change structure of transformer blocks to have MLP come first
         ### and could store attn result in transition table. (This is only beneficial for 
         ### very long context)
-        if np.sum(key_saved_act_chosen_sizes) > self.host_act_buffer_bytes:
+        
+        if verbose:
+            print(f"Initial Total Saved Bytes: {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB")
+        
+        if np.sum(key_saved_act_chosen_sizes) > self.cpu_act_buffer_size:
 
             ## check if all minimally saved, then major errrory and we need to reduce tokens per round
             if np.sum(key_saved_act_choices) == 0:
-                raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.host_act_buffer_bytes / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_tokens_per_round}. Must be below current error of {total_round_tokens} tokens per round") 
+                raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_tokens_per_round}. Must be below current error of {total_round_tokens} tokens per round") 
 
             required_demotion_bytes = np.sum(key_saved_act_chosen_sizes) - self.host_act_buffer_bytes
 
@@ -686,12 +695,14 @@ class ActiveModel:
 
 
         ### Now: "key_saved_act_choices" contains the final choices with valid config
-
+        if verbose:
+            print(f"Final Saved Act Choices (after Host Act Memory Constraints): {key_saved_act_choices}")
+        
         np.save("saved_act_dbg/final_key_saved_act_choices.npy", key_saved_act_choices)
 
         saved_host_bytes = np.sum(key_saved_act_chosen_sizes)
 
-        assert saved_host_bytes <= self.host_act_buffer_bytes
+        assert saved_host_bytes <= self.cpu_act_buffer_size
         
         
         if verbose:
