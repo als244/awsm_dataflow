@@ -11,10 +11,8 @@ def get_transformer_saved_act_sizes(model_dims, num_tokens):
 
 def get_moe_saved_act_sizes(model_dims, num_tokens):
     saved_act_sizes = {}
+    
     ## create obj to then query get_act_slot_size function
-
-    print("Num Tokens: ", num_tokens, flush=True)
-    print("ModelDims: ", model_dims, flush=True)
     moe_layer = TransformerMoELayer(0, model_dims, {})
 
     max_saved_act_level = moe_layer.max_saved_activations_level
