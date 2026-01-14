@@ -250,12 +250,14 @@ class ActiveModel:
             #self.cpu_act_buffer = torch.zeros(self.cpu_act_buffer_size, device="cpu", dtype=torch.uint8, pin_memory=True)
 
             ## Instead we create normal host memory and then register with GPU driver
-            self.cpu_act_buffer = torch.zeros(self.cpu_act_buffer_size, device="cpu", dtype=torch.uint8)
-
-            ret = _cudart.cudaHostRegister(ctypes.c_void_p(self.cpu_act_buffer.data_ptr()), ctypes.c_size_t(int(self.cpu_act_buffer_size)), ctypes.c_uint(0))
-            if ret != 0:
-                print(f"Failed to register host act buffer, with data ptr: {self.cpu_act_buffer.data_ptr()} and size of: {self.cpu_act_buffer_size}")
-                return -1
+            if self.cpu_act_buffer_size > 0:
+                self.cpu_act_buffer = torch.zeros(self.cpu_act_buffer_size, device="cpu", dtype=torch.uint8)
+                ret = _cudart.cudaHostRegister(ctypes.c_void_p(self.cpu_act_buffer.data_ptr()), ctypes.c_size_t(int(self.cpu_act_buffer_size)), ctypes.c_uint(0))
+                if ret != 0:
+                    print(f"Failed to register host act buffer, with data ptr: {self.cpu_act_buffer.data_ptr()} and size of: {self.cpu_act_buffer_size}")
+                    return -1
+            else:
+                self.cpu_act_buffer = None
 
             self.cpu_act_buffer_offset = 0
 
