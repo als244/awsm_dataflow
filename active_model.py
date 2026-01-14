@@ -8,8 +8,6 @@ import gc
 
 from transmission_scheduler import TransmissionScheduler
 
-import 
-
 _cudart = ctypes.CDLL('libcudart.so')
 _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
 
@@ -712,7 +710,7 @@ class ActiveModel:
                     cur_chunk_id += 1
 
         sys.exit(0)
-        
+
         return saved_levels
 
     def split_sequences(self, sequences):
