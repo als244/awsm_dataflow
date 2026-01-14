@@ -531,17 +531,19 @@ class ActiveModel:
 
         #### first iterate through all chunks/layers and calculate total compute costs (in flops)
 
+        num_saved_activation_levels = self.model_layers[0].max_saved_activations_level + 1
+
         ## these will be overall computed time (in ms) for each chunk
         compute_times = np.zeros(total_chunks * len(self.local_layer_ids), dtype=float)
        
         ## these will be computed time (in ms) for each saved activations level
-        saved_option_values = np.zeros((total_chunks * len(self.local_layer_ids), self.model_layers[0].max_saved_activations_level), dtype=float)
+        saved_option_values = np.zeros((total_chunks * len(self.local_layer_ids), num_saved_activation_levels), dtype=float)
 
         ## these will be transfer time (in ms)for each saved activations level
-        saved_option_transfer_durations = np.zeros((total_chunks * len(self.local_layer_ids), self.model_layers[0].max_saved_activations_level), dtype=float)
+        saved_option_transfer_durations = np.zeros((total_chunks * len(self.local_layer_ids), num_saved_activation_levels), dtype=float)
         
         ### storing this for convenient lookup
-        saved_option_act_sizes = np.zeros((total_chunks * len(self.local_layer_ids), self.model_layers[0].max_saved_activations_level), dtype=np.int64)
+        saved_option_act_sizes = np.zeros((total_chunks * len(self.local_layer_ids), num_saved_activation_levels), dtype=np.int64)
         
         ### Doing repeated calcs for each layer with hopes 
         ### to support multiple layer types/dims within same model in the future
@@ -556,7 +558,7 @@ class ActiveModel:
                     chunk_id = chunk["id"]
                     total_fwd_flops, saved_fwd_flops = self.model_layers[layer_id].get_fwd_flops(chunk_metadata)
                     compute_times[layer_num * total_chunks + chunk_id] = total_fwd_flops / (self.peak_tflops_est * 1e12)
-                    for saved_level in range(self.model_layers[0].max_saved_activations_level + 1):
+                    for saved_level in range(num_saved_activation_levels):
                         recompute_flops = saved_fwd_flops[saved_level]
                         recompute_time = recompute_flops / (self.peak_tflops_est * 1e12)
                         saved_option_values[layer_num * total_chunks + chunk_id, saved_level] = recompute_time
@@ -571,7 +573,7 @@ class ActiveModel:
                     chunk_id = chunk["id"]
                     total_tokens = chunk_metadata["total_q"]
                     saved_act_sizes = get_transformer_saved_act_sizes(model_dims, total_tokens)
-                    for saved_level in range(self.model_layers[0].max_saved_activations_level + 1):
+                    for saved_level in range(num_saved_activation_levels):
                         saved_level_bytes = saved_act_sizes[saved_level]
                         saved_option_act_sizes[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes
                         saved_option_transfer_durations[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes / (self.bw_est_gb_per_sec * 1e9)
@@ -646,7 +648,7 @@ class ActiveModel:
             demotion_bytes = 0
 
             ## do same thing (3->2, 2->1) until we might need to do special treatment for attention demotion
-            for level_to_demote in range(self.model_layers[0].max_saved_activations_level, 1, -1):
+            for level_to_demote in range(num_saved_activation_levels - 1, 1, -1):
                 
                 inds = np.where(key_saved_act_choices == level_to_demote)[0]
 
@@ -693,7 +695,7 @@ class ActiveModel:
         
         if verbose:
             print(f"Saving a total of {saved_host_bytes / 1e9:.2f}GB of activations in host memory.\nLevel breakdown:")
-            for i in range(self.model_layers[0].max_saved_activations_level, -1, -1):
+            for i in range(num_saved_activation_levels - 1, -1, -1):
                 num_combos = len(np.where(key_saved_act_choices == i)[0])
                 print(f"\tLevel {i}: {num_combos} (layer, chunk) combos")
 
