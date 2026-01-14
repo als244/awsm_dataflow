@@ -6,7 +6,7 @@ import os
 import sys
 import gc
 
-from .saved_activations_policy import get_transformer_saved_act_sizes
+from awsm_transformer import get_transformer_saved_act_sizes
 from transmission_scheduler import TransmissionScheduler
 
 _cudart = ctypes.CDLL('libcudart.so')
