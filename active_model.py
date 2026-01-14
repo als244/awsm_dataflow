@@ -707,6 +707,9 @@ class ActiveModel:
                 for chunk in seq_group:
                     if slot_num < self.n_home_act_slots:
                         saved_levels[(layer_id, cur_chunk_id)] = key_saved_act_choices[slot_num]
+
+                        if saved_levels[(layer_id, cur_chunk_id)] < 0 or saved_levels[(layer_id, cur_chunk_id)] >= num_saved_activation_levels:
+                            raise Exception(f"Invalid saved level {saved_levels[(layer_id, cur_chunk_id)]} for layer {layer_id} chunk {cur_chunk_id} (host act slot). Must be in range [0, {num_saved_activation_levels})")
                         
                         ## FULL RECOMPUTE
                         #saved_levels[(layer_id, cur_chunk_id)] = 0
