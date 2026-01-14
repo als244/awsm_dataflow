@@ -1315,6 +1315,7 @@ class ActiveModel:
                             next_act_pre_layer_ind, next_act_pre_chunk_id = next_act_slot_prefetch
                             next_act_pre_layer_id = self.local_layer_ids[next_act_pre_layer_ind]
                             self.inbound_stream.wait_stream(self.compute_stream)
+                            print("Next prefetch: ", (next_act_pre_layer_id, next_act_pre_chunk_id), flush=True)
                             self.inbound_stream.wait_event(self.home_act_slot_available_events[(next_act_pre_layer_id, next_act_pre_chunk_id)])
                             with self.inbound_stream:
                                 self.profiler.range_push(f"Prefetch Activations: Layer {next_act_pre_layer_id}, Chunk {next_act_pre_chunk_id}")
