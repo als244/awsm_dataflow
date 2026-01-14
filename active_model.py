@@ -589,6 +589,8 @@ class ActiveModel:
         ### Confirm we get a valid schedule, otherwise we have major issues
         if saved_act_choices is None:
 
+            print("No valid DP schedule found. Setting all host activations to be minimally saved.")
+
             ### TODO: probably have default be recomputing everything
             ##raise Exception("No valid schedule found for saved activations, idle time is forced")
             key_saved_act_choices = np.zeros(total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots, dtype=np.int32)
@@ -602,8 +604,6 @@ class ActiveModel:
             ### override the last n_gpu_act_slots with saving on device => level -1
             key_saved_act_choices = saved_act_choices[:-self.n_gpu_act_slots]
 
-        
-        saved_act_choices[-self.n_gpu_act_slots:] = -1
 
         ### Now we enfoce stricter constraints if insufficient host memory capacity
         ### We might need to reduce saved activations levels to ensure we don't exceed host act buffer capacity
