@@ -7,6 +7,7 @@ from .ops import awsm_rmsnorm_fwd, awsm_rmsnorm_fwd_recompute, awsm_rmsnorm_bwd,
 from .matmul_dispatchers import dispatcher
 
 from .utils import get_torch_dtype
+from .mem_register import pin_tensor
 
 class TransformerLayer():
 
