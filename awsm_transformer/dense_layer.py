@@ -6,6 +6,8 @@ from .ops import awsm_rmsnorm_fwd, awsm_rmsnorm_fwd_recompute, awsm_rmsnorm_bwd,
 
 from .matmul_dispatchers import dispatcher
 
+from .utils import get_torch_dtype
+
 class TransformerLayer():
 
     def __init__(self, layer_id, model_dims, model_hyperparams, is_muon=False, secondary_compute_stream=None):
@@ -847,7 +849,7 @@ class TransformerLayer():
 
         # 2. Setup Dtypes
         # We mirror the logic in make_act_slot to ensure sizes match exactly
-        resid_dtype = self.model_dims["datatypes"]["residual"]
+        resid_dtype = get_torch_dtype(self.model_dims["datatypes"]["residual"])
         
         # In your make_act_slot, these are set to resid_dtype
         attn_act_dtype = resid_dtype
