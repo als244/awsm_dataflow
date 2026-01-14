@@ -1629,4 +1629,4 @@ class TransformerMoELayer():
             down_flops = 2 * seq_len * d_model * top_k * expert_dim
             fwd_flops += down_flops
         
-        return total_fwd_flops, saved_fwd_flops
+        return fwd_flops, saved_fwd_flops

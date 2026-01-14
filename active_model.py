@@ -576,8 +576,16 @@ class ActiveModel:
                         saved_option_act_sizes[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes
                         saved_option_transfer_durations[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes / (self.bw_est_gb_per_sec * 1e9)
 
+
+        np.save("saved_act_dbg/compute_times.npy", compute_times)
+        np.save("saved_act_dbg/saved_option_transfer_durations.npy", saved_option_transfer_durations)
+        np.save("saved_act_dbg/saved_option_values.npy", saved_option_values)
+        np.save("saved_act_dbg/saved_option_act_sizes.npy", saved_option_act_sizes)
+        
         ### Now we have inputs for solver to determine saved activations levels
         optional_recompute_time_avoided, saved_act_choices = self.transmission_scheduler.solve(compute_times, saved_option_transfer_durations, saved_option_values, self.n_gpu_act_slots) 
+        
+        np.save("saved_act_dbg/initial_key_saved_act_choices.npy", saved_act_choices[:-self.n_gpu_act_slots])
         
         ### Confirm we get a valid schedule, otherwise we have major issues
         if saved_act_choices is None:
@@ -675,6 +683,8 @@ class ActiveModel:
 
 
         ### Now: "key_saved_act_choices" contains the final choices with valid config
+
+        np.save("saved_act_dbg/final_key_saved_act_choices.npy", key_saved_act_choices)
 
         saved_host_bytes = np.sum(key_saved_act_chosen_sizes)
 
