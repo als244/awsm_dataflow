@@ -589,7 +589,8 @@ class ActiveModel:
         ### Confirm we get a valid schedule, otherwise we have major issues
         if saved_act_choices is None:
 
-            print("No valid DP schedule found. Setting all host activations to be minimally saved.")
+            if verbose:
+                print("No valid DP schedule found to avoid idle time => Setting all host activations to be minimally saved.")
 
             ### TODO: probably have default be recomputing everything
             ##raise Exception("No valid schedule found for saved activations, idle time is forced")

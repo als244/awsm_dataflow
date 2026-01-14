@@ -417,10 +417,11 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     max_t = next_max;
   }
 
-  // Backtracking
   double *final_row = &dp_table[T * BUF_SIZE];
   double max_val = INF_NEG;
   int curr_t = -1;
+
+  // 1. Find the best finish time for the last task
   for (int t = min_t; t <= max_t; t++) {
     if (final_row[t] > max_val) {
       max_val = final_row[t];
@@ -429,50 +430,76 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
   }
 
   if (curr_t != -1) {
+    // 2. Walk backwards
     for (int i = T - 1; i >= 0; i--) {
       double current_val = dp_table[(i + 1) * BUF_SIZE + curr_t];
       double *src_row = &dp_table[i * BUF_SIZE];
       int arrival = arrivals[i];
       FastOption *task_opts = &opts[i * k];
 
-      int best_opt = -1;
-      int best_prev_t = -1;
+      int best_opt = 0; // Default to 0 to prevent -1
+      int best_prev_t = curr_t - task_opts[0].duration_ticks; // Default prev
+      double min_error = 1.0e15; // Start with huge error
 
+      // Check all k options to find which one matches 'current_val' best
       for (int opt = 0; opt < k; opt++) {
         int dur = task_opts[opt].duration_ticks;
         double size = task_opts[opt].size;
-
         int prev_t = curr_t - dur;
+
+        double estimated_val = INF_NEG;
+        int candidate_prev_t = -1;
+
+        // A. Pull Logic (Transition from specific prev time)
         if (prev_t > arrival) {
-          double diff = current_val - (src_row[prev_t] + size);
-          if (diff > -0.001 && diff < 0.001) {
-            best_opt = opt;
-            best_prev_t = prev_t;
-            break;
-          }
-        } else if (prev_t <= arrival) {
+          estimated_val = src_row[prev_t] + size;
+          candidate_prev_t = prev_t;
+        }
+        // B. Wait Logic (Transition from any time <= arrival)
+        else if (prev_t <= arrival) {
+          // Find max value in valid wait window
           double w_val = INF_NEG;
-          for (int z = 0; z <= arrival; z++)
-            if (src_row[z] > w_val)
+          int best_z = 0;
+
+          // Optimization: Scan backwards from arrival as later times are
+          // preferred
+          for (int z = arrival; z >= 0; z--) {
+            if (src_row[z] > w_val) {
               w_val = src_row[z];
-          double diff = current_val - (w_val + size);
-          if (diff > -0.001 && diff < 0.001) {
-            best_opt = opt;
-            for (int z = arrival; z >= 0; z--) {
-              if (src_row[z] > w_val - 0.001) {
-                best_prev_t = z;
-                break;
-              }
+              best_z = z;
             }
-            break;
           }
+          estimated_val = w_val + size;
+          candidate_prev_t = best_z;
+        }
+
+        // Calculate Reconstruction Error
+        double diff = current_val - estimated_val;
+        if (diff < 0)
+          diff = -diff; // fabs
+
+        // Keep the option that explains the score with least mathematical error
+        if (diff < min_error) {
+          min_error = diff;
+          best_opt = opt;
+          best_prev_t = candidate_prev_t;
         }
       }
+
+      // Assign the winner
       out_choices[i] = best_opt;
+
+      // Setup next iteration
+      // Safety: If best_prev_t is somehow invalid (rare), clamp it
+      if (best_prev_t < 0)
+        best_prev_t = 0;
       curr_t = best_prev_t;
     }
   } else {
     max_val = 0.0;
+    // Fill with 0s on total failure
+    for (int i = 0; i < T; i++)
+      out_choices[i] = 0;
   }
 
   free(arrivals);
