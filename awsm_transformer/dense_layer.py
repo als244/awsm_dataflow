@@ -755,7 +755,7 @@ class TransformerLayer():
         head_dim = self.model_dims["head_dim"]
         expert_dim = self.model_dims["expert_dim"]
 
-        resid_dtype = self.model_dims["datatypes"]["residual"]
+        resid_dtype = get_torch_dtype(self.model_dims["datatypes"]["residual"])
 
         ## assume activations are the same as residual
         attn_act_dtype = resid_dtype
