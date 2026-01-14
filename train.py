@@ -27,7 +27,7 @@ MAX_SEQ_LEN = 8192
 USE_MUON = False
 SAVE_FINAL = False
 
-MODEL_CHOICE = "olmoe_7Bx1B"
+MODEL_CHOICE = "nanogpt_124M"
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
@@ -158,7 +158,7 @@ active_model.initialize(save_path=INIT_MODEL_PATH)
 print(f"Loading model from {INIT_MODEL_PATH}", flush=True)
 ret = active_model.load(INIT_MODEL_PATH)
 if ret != 0:
-    print("Failed to load model, exiting...")
+    print("Failed to load model, exiting...", flush=True)
     sys.exit(ret)
 
 
