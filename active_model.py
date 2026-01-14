@@ -577,9 +577,6 @@ class ActiveModel:
                     chunk_id = chunk["id"]
                     total_tokens = chunk_metadata["total_q"]
                     saved_act_sizes = get_transformer_saved_act_sizes(model_dims, total_tokens)
-                    print("Total Tokens: ", total_tokens, flush=True)
-                    print("Saved Act Sizes: ", saved_act_sizes, flush=True)
-                    print("\n\n\n")
                     for saved_level in range(num_saved_activation_levels):
                         saved_level_bytes = saved_act_sizes[saved_level]
                         saved_option_act_sizes[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes
@@ -714,7 +711,7 @@ class ActiveModel:
                 num_combos = len(np.where(key_saved_act_choices == i)[0])
                 print(f"\tLevel {i}: {num_combos} (layer, chunk) combos")
 
-        slot_num = 0.
+        slot_num = 0
         saved_levels = {}
         for layer_id in self.local_layer_ids:
             cur_chunk_id = 0
