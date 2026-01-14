@@ -577,8 +577,8 @@ class ActiveModel:
                     chunk_id = chunk["id"]
                     total_tokens = chunk_metadata["total_q"]
                     saved_act_sizes = get_transformer_saved_act_sizes(model_dims, total_tokens)
-                    print("Total Tokens: ", total_tokens)
-                    print("Saved Act Sizes: ", saved_act_sizes)
+                    print("Total Tokens: ", total_tokens, flush=True)
+                    print("Saved Act Sizes: ", saved_act_sizes, flush=True)
                     print("\n\n\n")
                     for saved_level in range(num_saved_activation_levels):
                         saved_level_bytes = saved_act_sizes[saved_level]
