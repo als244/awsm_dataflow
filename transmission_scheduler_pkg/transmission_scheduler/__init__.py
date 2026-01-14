@@ -111,9 +111,13 @@ class TransmissionScheduler:
             T, N, k, compute, flat_durs, flat_sizes, safe_deadline, choices
         )
         
-        # 5. Restore Real Value (Subtract Offset)
-        real_val = 0.0
-        if val != 0.0:
-            real_val = val - (T * offset)
+        # 5. Check Failure vs. Success
+        # Since we added `offset` (>= 1.0), any valid schedule MUST have a score >= T * 1.0.
+        # Therefore, raw_val == 0.0 implies the C solver found NO path.
+        if raw_val == 0.0:
+            return None, None
+            
+        # 6. Restore Real Value
+        real_val = raw_val - (T * offset)
             
         return real_val, choices

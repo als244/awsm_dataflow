@@ -1554,7 +1554,12 @@ class TransformerMoELayer():
 
     def get_fwd_flops(self, chunk_metadata):
 
+        saved_fwd_flops = {}
+        for i in range(self.max_saved_activations_level + 1):
+            saved_fwd_flops[i] = 0
+
         num_tokens = chunk_metadata["total_q"]
+        num_routed_experts = self.model_dims["num_routed_experts"]
         seq_lens = chunk_metadata["seq_lens_host"]
         prior_seq_lens = chunk_metadata["prior_seq_lens_host"]
         num_heads = self.model_dims["n_heads"]
@@ -1565,22 +1570,63 @@ class TransformerMoELayer():
         top_k = self.model_dims["top_k"]
 
         attn_dim = num_heads * head_dim
+        ctx_dim = n_kv_heads * head_dim
 
         is_causal = self.model_dims["is_causal"]
 
         fwd_flops = 0
 
+        ### have default "emergency" option be to save minimal amount of activations
+        saved_fwd_flops[0] = 0
+
         for i in range(len(seq_lens)):
+
+            ## here seq_len refers to only current portion of overall sequence if 
+            ## sequence spans multiple chunks
             seq_len = seq_lens[i]
             prior_seq_len = prior_seq_lens[i]
 
-            ## base matmuls for attn
-            fwd_flops += 2 * seq_len * d_model * (2 * attn_dim + 2 * n_kv_heads * head_dim)
+            kv_flops = 2 * (2 * seq_len * d_model * ctx_dim)
+            fwd_flops += kv_flops
+
+            router_flops = 2 * seq_len * d_model * num_routed_experts
+            fwd_flops += router_flops
+
+
+
+            qo_flops = 2 * (2 * seq_len * d_model * attn_dim)
+            saved_fwd_flops[2] += qo_flops
+            saved_fwd_flops[3] += qo_flops
+            
+            fwd_flops += qo_flops
+
+            ## 
+            attn_flops_prior = 4 * seq_len * prior_seq_len * attn_dim
+
+            ## caucal across seq len
+            if is_causal:
+                attn_flops_current = 2 * seq_len * seq_len * attn_dim
+            else:
+                attn_flops_current = 4 * seq_len * seq_len * attn_dim
+
+            attn_flops = attn_flops_prior + attn_flops_current
+
+            saved_fwd_flops[1] += attn_flops
+            saved_fwd_flops[2] += attn_flops
+            saved_fwd_flops[3] += attn_flops
+            
             ## prior seq lens are full causal
-            fwd_flops += 4 * seq_len * prior_seq_len * attn_dim
-            fwd_flops += 2 * seq_len * seq_len *attn_dim
+            fwd_flops += attn_flops
 
             ## base matmuls for ffn
-            fwd_flops += 2 * seq_len * d_model * (3 * top_k *expert_dim)
+
+            up_flops = 2 * seq_len * d_model * top_k * 2 * expert_dim
+            saved_fwd_flops[3] += up_flops
+
+            fwd_flops += up_flops
+
+            ### always save result of down proj ==> transition table
+            down_flops = 2 * seq_len * d_model * top_k * expert_dim
+            fwd_flops += down_flops
         
-        return fwd_flops
+        return total_fwd_flops, saved_fwd_flops

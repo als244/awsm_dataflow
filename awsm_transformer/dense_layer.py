@@ -972,31 +972,102 @@ class TransformerLayer():
             gpu_weights[k].copy_(cpu_weights[k], non_blocking=True)
         
     def get_fwd_flops(self, chunk_metadata):
+        # Initialize the saved dictionary for all levels (0 to 3)
+        saved_fwd_flops = {}
+        for i in range(self.max_saved_activations_level + 1):
+            saved_fwd_flops[i] = 0
 
         num_tokens = chunk_metadata["total_q"]
         seq_lens = chunk_metadata["seq_lens_host"]
         prior_seq_lens = chunk_metadata["prior_seq_lens_host"]
+        
         num_heads = self.model_dims["n_heads"]
         head_dim = self.model_dims["head_dim"]
         d_model = self.model_dims["d_model"]
-        expert_dim = self.model_dims["expert_dim"]
+        expert_dim = self.model_dims["expert_dim"] # FFN intermediate dimension
         n_kv_heads = self.model_dims["n_kv_heads"]
 
+        # Effective dimension for attention calculations (all heads combined)
         attn_dim = num_heads * head_dim
+        # Effective dimension for KV calculations
+        kv_dim = n_kv_heads * head_dim
 
-        is_causal = self.model_dims["is_causal"]
+        fwd_flops = 0
+
+        saved_fwd_flops[0] = 0
 
         for i in range(len(seq_lens)):
             seq_len = seq_lens[i]
             prior_seq_len = prior_seq_lens[i]
 
-            ## base matmuls for attn
-            fwd_flops += 2 * seq_len * d_model * (2 * attn_dim + 2 * n_kv_heads * head_dim)
-            ## prior seq lens are full causal
-            fwd_flops += 4 * seq_len * prior_seq_len * attn_dim
-            fwd_flops += 2 * seq_len * seq_len *attn_dim
+            # ----------------------------------------------------------------------
+            # 1. KV Projections (xk, xv)
+            # Mapping Level 0: "xk", "xv"
+            # ----------------------------------------------------------------------
+            # 2 (mul/add) * seq * d_model * kv_dim * 2 (for K and V)
+            kv_proj_flops = 2 * seq_len * d_model * kv_dim * 2
+            
+            fwd_flops += kv_proj_flops
 
-            ## base matmuls for ffn
-            fwd_flops += 2 * seq_len * d_model * (3 * expert_dim)
-        
-        return fwd_flops
+            # ----------------------------------------------------------------------
+            # 2. Q and O Projections (xq, xo)
+            # Mapping Level 2: "xq", "xo"
+            # ----------------------------------------------------------------------
+            # Q Proj: 2 * seq * d_model * attn_dim
+            # O Proj: 2 * seq * d_model * attn_dim
+            qo_flops = 2 * (2 * seq_len * d_model * attn_dim)
+            
+            fwd_flops += qo_flops
+            
+            # Saved at Level 2 and above
+            saved_fwd_flops[2] += qo_flops
+            saved_fwd_flops[3] += qo_flops
+
+            # ----------------------------------------------------------------------
+            # 3. Attention Mechanism (attn_result)
+            # Mapping Level 1: "attn_result"
+            # ----------------------------------------------------------------------
+            # Cross attention to prior tokens (Full Causal)
+            # 4 (2 for QK^T + 2 for AV) * seq * prior_seq * attn_dim
+            attn_flops_prior = 4 * seq_len * prior_seq_len * attn_dim
+
+            # Self attention (Current sequence)
+            if self.model_dims["is_causal"]:
+                # Causal divides operations by approx 2
+                attn_flops_current = 2 * seq_len * seq_len * attn_dim
+            else:
+                # Full bidirectional
+                attn_flops_current = 4 * seq_len * seq_len * attn_dim
+
+            attn_flops = attn_flops_prior + attn_flops_current
+            
+            fwd_flops += attn_flops
+            
+            # Saved at Level 1 and above
+            saved_fwd_flops[1] += attn_flops
+            saved_fwd_flops[2] += attn_flops
+            saved_fwd_flops[3] += attn_flops
+
+            # ----------------------------------------------------------------------
+            # 4. FFN Weights (x1, x3)
+            # Mapping Level 3: "x1", "x3" (Gate and Up projections)
+            # ----------------------------------------------------------------------
+            # Assumes SwiGLU: x1=Gate, x3=Up. 
+            # 2 (mul/add) * seq * d_model * expert_dim * 2 (matrices)
+            ffn_up_gate_flops = 2 * seq_len * d_model * expert_dim * 2
+            
+            fwd_flops += ffn_up_gate_flops
+            
+            # Saved only at Max Level (3)
+            saved_fwd_flops[3] += ffn_up_gate_flops
+
+            # ----------------------------------------------------------------------
+            # 5. FFN Down Projection
+            # Not in mapping, assumed always recomputed or minimal save
+            # ----------------------------------------------------------------------
+            # 2 (mul/add) * seq * expert_dim * d_model
+            ffn_down_flops = 2 * seq_len * expert_dim * d_model
+            
+            fwd_flops += ffn_down_flops
+
+        return fwd_flops, saved_fwd_flops

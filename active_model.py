@@ -6,6 +6,10 @@ import os
 import sys
 import gc
 
+from transmission_scheduler import TransmissionScheduler
+
+import 
+
 _cudart = ctypes.CDLL('libcudart.so')
 _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
 
@@ -22,6 +26,15 @@ class ActiveModel:
         self.head_layer = head_layer
         self.chunk_metadata_func = chunk_metadata_func
         self.hardware_env = hardware_env
+
+        ### this is bw per-direction when both sides are transmitting
+        ### this is worst case (lower bw when bothh sides are active) it is conservative option and leans 
+        ### more towards higher computation density:
+        ### (i.e. larger rounds, and more recomputation vs. 
+        ### smaller rounds and more saving of activations)
+        self.bw_est_gb_per_sec = hardware_env["transfer_report"]["overall_unidirectional_concurrent_bandwidth_gb_per_sec"]
+        self.peak_tflops_est = hardware_env["matmul_report"]["overall_layer_matmul_throughput_tflops_per_sec"]
+        self.transmission_scheduler = TransmissionScheduler()
 
         self.cpu_model_weights = {}
         self.cpu_grad_weights = {}
@@ -497,14 +510,185 @@ class ActiveModel:
         return
 
           
-    def determine_saved_levels(self, seq_groups):
+    def determine_saved_levels(self, seq_groups, verbose=True):
 
         total_chunks = sum([len(seq_group) for seq_group in seq_groups])
+        total_round_tokens = 0
+        for seq_group in seq_groups:
+            for chunk in seq_group:
+                chunk_metadata = chunk["chunk_metadata"]
+                total_round_tokens += chunk_metadata["total_q"]
 
         self.n_home_act_slots = max(0, total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots)
 
-        ## TODO: implement this for real (accounting for capacities, interconnect, processor speed)..
+        ### Use the DP solver to determine saved activtions levels
+        ### Each options should be a (duration, size) tuple where
+        ### the goal is to maximize size under constraint that finish_trans(chunk_{i}) <= start_compute(chunk_{i + n_gpu_slots})
         
+        ### the duration of each option is how long it takes to transfer
+        ### the size of each option is the amount of time it took to compute
+        ### that set of corresponding activations (i.e. the amount of time saved by NOT recomputing during backward)
+
+        ### compute time is the overall time chunk takes for layer
+
+        #### first iterate through all chunks/layers and calculate total compute costs (in flops)
+
+        ## these will be overall computed time (in ms) for each chunk
+        compute_times = np.zeros(total_chunks * len(self.local_layer_ids), dtype=float)
+       
+        ## these will be computed time (in ms) for each saved activations level
+        saved_option_values = np.zeros((total_chunks * len(self.local_layer_ids), self.model_layers[0].max_saved_activations_level), dtype=float)
+
+        ## these will be transfer time (in ms)for each saved activations level
+        saved_option_transfer_durations = np.zeros((total_chunks * len(self.local_layer_ids), self.model_layers[0].max_saved_activations_level), dtype=float)
+        
+        ### storing this for convenient lookup
+        saved_option_act_sizes = np.zeros((total_chunks * len(self.local_layer_ids), self.model_layers[0].max_saved_activations_level), dtype=np.int64)
+        
+        ### Doing repeated calcs for each layer with hopes 
+        ### to support multiple layer types/dims within same model in the future
+
+        ### Need to profile this prep section to see if it's a bottleneck
+
+        for layer_num in range(len(self.local_layer_ids)):
+            layer_id = self.local_layer_ids[layer_num]
+            for seq_group in seq_groups:
+                for chunk in seq_group:
+                    chunk_metadata = chunk["chunk_metadata"]
+                    chunk_id = chunk["id"]
+                    total_fwd_flops, saved_fwd_flops = self.model_layers[layer_id].get_fwd_flops(chunk_metadata)
+                    compute_times[layer_num * total_chunks + chunk_id] = total_fwd_flops / (self.peak_tflops_est * 1e12)
+                    for saved_level in range(self.model_layers[0].max_saved_activations_level + 1):
+                        recompute_flops = saved_fwd_flops[saved_level]
+                        recompute_time = recompute_flops / (self.peak_tflops_est * 1e12)
+                        saved_option_values[layer_num * total_chunks + chunk_id, saved_level] = recompute_time
+
+        ### now for each chunk get the sizes of different levels of saved activations
+        for layer_num in range(len(self.local_layer_ids)):
+            layer_id = self.local_layer_ids[layer_num]
+            model_dims = self.model_layers[layer_id].model_dims
+            for seq_group in seq_groups:
+                for chunk in seq_group:
+                    chunk_metadata = chunk["chunk_metadata"]
+                    chunk_id = chunk["id"]
+                    total_tokens = chunk_metadata["total_q"]
+                    saved_act_sizes = get_transformer_saved_act_sizes(model_dims, total_tokens)
+                    for saved_level in range(self.model_layers[0].max_saved_activations_level + 1):
+                        saved_level_bytes = saved_act_sizes[saved_level]
+                        saved_option_act_sizes[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes
+                        saved_option_transfer_durations[layer_num * total_chunks + chunk_id, saved_level] = saved_level_bytes / (self.bw_est_gb_per_sec * 1e9)
+
+        ### Now we have inputs for solver to determine saved activations levels
+        optional_recompute_time_avoided, saved_act_choices = self.transmission_scheduler.solve(compute_times, saved_option_transfer_durations, saved_option_values, self.n_gpu_act_slots) 
+        
+        ### Confirm we get a valid schedule, otherwise we have major issues
+        if saved_act_choices is None:
+
+            ### TODO: probably have default be recomputing everything
+            ##raise Exception("No valid schedule found for saved activations, idle time is forced")
+            key_saved_act_choices = np.zeros(total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots, dtype=np.int32)
+        else:
+
+            if verbose:
+                print(f"SAVED ACT CHOICES: {saved_act_choices}")
+                print(f"OPTIONAL RECOMPUTE TIME AVOIDED: {optional_recompute_time_avoided}")
+            ### override the last n_gpu_act_slots with saving on device => level -1
+            key_saved_act_choices = saved_act_choices[:-self.n_gpu_act_slots]
+
+        
+        saved_act_choices[-self.n_gpu_act_slots:] = -1
+
+        ### Now we enfoce stricter constraints if insufficient host memory capacity
+        ### We might need to reduce saved activations levels to ensure we don't exceed host act buffer capacity
+
+        ### cutting off bottom n_gpu_act_slots since we're saving activations on device
+        key_saved_option_act_sizes = saved_option_act_sizes[:-self.n_gpu_act_slots, :]
+
+        ### indexing based on saved levels
+        key_saved_act_chosen_sizes = key_saved_option_act_sizes[np.arange(len(key_saved_option_act_sizes)), key_saved_act_choices]
+        
+        ### now we need to reduce saved activation levels
+        ### naive approarch for now. convert 3s to 2s until satisfied,
+        ### then convert 2s to 1s until satisfied, etc.
+        ### for everything except attention this is relatively unimportant
+        ### besides potential wastefullness of bad bin packing, but
+        ### might be good to do something related to periodicity
+        ### to better balance I/O pressure in worst case
+        ### However, demotion from level 1 to level 0 is important for long seqs
+        ### where we really value later chunks within given seq group vs. earlier
+
+        ### hopefully this is a rare case, but more common on consumer PCs with 
+        ### high FLOPS/interconnect bw ratio
+
+        ### TODO: clean this up. This portion is weirdly hardocded using 4 saved level options
+        ### and knowing saving attn only is level 1
+
+        ### ALso TODO: could change structure of transformer blocks to have MLP come first
+        ### and could store attn result in transition table. (This is only beneficial for 
+        ### very long context)
+        if np.sum(key_saved_act_chosen_sizes) > self.host_act_buffer_bytes:
+
+            ## check if all minimally saved, then major errrory and we need to reduce tokens per round
+            if np.sum(key_saved_act_choices) == 0:
+                raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.host_act_buffer_bytes / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_tokens_per_round}. Must be below current error of {total_round_tokens} tokens per round") 
+
+            required_demotion_bytes = np.sum(key_saved_act_chosen_sizes) - self.host_act_buffer_bytes
+
+            if verbose:
+                print(f"Wanting to save more activations {np.sum(saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.host_act_buffer_bytes / 1e9:.2f}GB; demoting levels until satisfied...")
+
+            demotion_bytes = 0
+
+            ## do same thing (3->2, 2->1) until we might need to do special treatment for attention demotion
+            for level_to_demote in range(self.model_layers[0].max_saved_activations_level, 1, -1):
+                
+                inds = np.where(key_saved_act_choices == level_to_demote)[0]
+
+                for i in inds:
+                    ### update these arrays as same (chunk, layer) could be demoted again
+                    key_saved_act_choices[i] = level_to_demote - 1
+                    demotion_bytes += key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, level_to_demote - 1]
+                    key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, level_to_demote - 1]
+                    if demotion_bytes >= required_demotion_bytes:
+                        break
+
+            ### for attention demotion there might be different significantly different "values"
+            ### associated with same transfer cost, so we want to demote the lowest value chunks first (i.e. early chunks in seq groups)
+
+            attn_only_save_inds = np.where(key_saved_act_choices == 1)[0]
+            ### now determine value == recompute_time and start demoting smallest first
+
+            attn_only_save_values = saved_option_values[attn_only_save_inds, 1]
+            
+            sorted_attn_only_inds = attn_only_save_inds[np.argsort(attn_only_save_values)]
+
+            for i in sorted_attn_only_inds:
+                key_saved_act_choices[i] = 0
+                demotion_bytes += key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, 0]
+                key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, 0]
+                if demotion_bytes >= required_demotion_bytes:
+                    break
+
+            ## if we reach here then we fully demoted everything and still need more space
+            ## so report same error as we started with
+            raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.host_act_buffer_bytes / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_tokens_per_round}. Must be below current error of {total_round_tokens} tokens per round") 
+
+        
+
+
+        ### Now: "key_saved_act_choices" contains the final choices with valid config
+
+        saved_host_bytes = np.sum(key_saved_act_chosen_sizes)
+
+        assert saved_host_bytes <= self.host_act_buffer_bytes
+        
+        
+        if verbose:
+            print(f"Saving a total of {saved_host_bytes / 1e9:.2f}GB of activations in host memory.\nLevel breakdown:")
+            for i in range(self.model_layers[0].max_saved_activations_level, -1, -1):
+                num_combos = len(np.where(key_saved_act_choices == i)[0])
+                print(f"\tLevel {i}: {num_combos} (layer, chunk) combos")
+
         slot_num = 0.
         saved_levels = {}
         for layer_id in self.local_layer_ids:
@@ -512,8 +696,10 @@ class ActiveModel:
             for seq_group in seq_groups:
                 for chunk in seq_group:
                     if slot_num < self.n_home_act_slots:
+                        saved_levels[(layer_id, cur_chunk_id)] = key_saved_act_choices[slot_num]
+                        
                         ## FULL RECOMPUTE
-                        saved_levels[(layer_id, cur_chunk_id)] = 0
+                        #saved_levels[(layer_id, cur_chunk_id)] = 0
                         ## PARTIAL RECOMPUTE (save attn)
                         #saved_levels[(layer_id, cur_chunk_id)] = 1
                         ## PARTIAL Recompute (save attn + xq,xo)
@@ -524,6 +710,9 @@ class ActiveModel:
                         saved_levels[(layer_id, cur_chunk_id)] = -1
                     slot_num += 1
                     cur_chunk_id += 1
+
+        sys.exit(0)
+        
         return saved_levels
 
     def split_sequences(self, sequences):
