@@ -52,8 +52,7 @@ class TransmissionScheduler:
         Solves the transmission scheduling problem with STRICT Hardware Constraints.
         
         The solver assumes the C backend enforces that Task `i` must finish 
-        before Task `i + N` arrives. If this is physically impossible given the 
-        durations, the function returns 0.0.
+        before Task `i + N` arrives.
 
         Parameters
         ----------
@@ -68,10 +67,10 @@ class TransmissionScheduler:
 
         Returns
         -------
-        best_val : float
-            Max total size. Returns 0.0 if constraints cannot be met.
-        best_choices : ndarray
-            Selected options.
+        best_val : float or None
+            Max total size. Returns `None` if constraints cannot be met (e.g. buffer overflow).
+        best_choices : ndarray or None
+            Selected options. Returns `None` on failure.
         """
         # 1. Validate and Cast Inputs
         compute = np.ascontiguousarray(compute, dtype=np.float64)
