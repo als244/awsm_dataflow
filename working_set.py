@@ -362,7 +362,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ### this includes transition table, context window, and activation workspace
     baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, target_chunk_size, target_num_chunks, training_config=training_config)
 
-    cur_remaining_gpu_mem_bytes -= baseline_act_gpu_memory
+    remaining_gpu_mem_bytes -= baseline_act_gpu_memory
 
     ### TODO: indicate we need smaller chunk size
     #if cur_remaining_gpu_mem_bytes < 0:
@@ -375,14 +375,14 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     additional_full_compute_layer_size_bytes = min(n_local_layers - 1, get_full_compute_layer_size_bytes(model_dims, target_tokens_per_round, backbone_sizes))
 
     ### this is on top of the 1 full layer we have as part of baseline
-    additional_complete_layers_est = cur_remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes
+    additional_complete_layers_est = remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes
 
     n_gpu_layers = 1 + additional_complete_layers_est
     n_gpu_grad_layers = 1 + additional_complete_layers_est
 
     complete_layers_size_est = additional_full_compute_layer_size_bytes * additional_complete_layers_est
     
-    leftover_post_complete_layers_bytes = cur_remaining_gpu_mem_bytes - complete_layers_size_est
+    leftover_post_complete_layers_bytes = remaining_gpu_mem_bytes - complete_layers_size_est
 
     ### if we can't fit additional layers assign remaining bytes all to gpu act workspace
     if additional_complete_layers_est == 0:
