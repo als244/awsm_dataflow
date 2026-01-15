@@ -383,7 +383,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
             continue
 
         ### at this point we break and will choose first valid chunk size
-        if chunk_size < min_chunk_size or chunk_size < init_target_min_chunk_size:
+        if chunk_size < init_target_min_chunk_size or (min_chunk_size is not None and chunk_size < min_chunk_size):
             break
 
         target_num_chunks = math.ceil(target_tokens_per_round / target_chunk_size)
