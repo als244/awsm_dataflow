@@ -357,7 +357,13 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         
     target_chunk_size = round_to_nearest_divisor(init_target_min_chunk_size, target_tokens_per_round, direction="up")
 
+    if verbose:
+        print(f"[Working Set Log] Determined Target Chunk Size Est: {target_chunk_size}")
+
     target_num_chunks = target_tokens_per_round / target_chunk_size
+
+    if verbose:
+        print(f"[Working Set Log] Determined Target Num Chunks Est: {target_num_chunks}")
 
     ### this includes transition table, context window, and activation workspace
     baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, target_chunk_size, target_num_chunks, training_config=training_config)
@@ -372,15 +378,15 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ### At this point we can equally divide remaining GPU memory to know how many complete
     ### layers (weights + grad + activations) we can store, however we will need to account
     ### for chunk size which may increase context window size + be a factor of addition memory workspace
-    additional_full_compute_layer_size_bytes = min(num_local_layers - 1, get_full_compute_layer_size_bytes(model_dims, target_tokens_per_round, backbone_sizes))
+    additional_full_compute_layer_size_bytes = get_full_compute_layer_size_bytes(model_dims, target_tokens_per_round, backbone_sizes)
 
     ### this is on top of the 1 full layer we have as part of baseline
-    additional_complete_layers_est = remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes
+    additional_complete_layers_est = min(num_local_layers - 1, remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes)
 
     n_gpu_layers = 1 + additional_complete_layers_est
     n_gpu_grad_layers = 1 + additional_complete_layers_est
 
-    complete_layers_size_est = additional_full_compute_layer_size_bytes * additional_complete_layers_est
+    complete_layers_size_est = additional_complete_layers_est * additional_full_compute_layer_size_bytes
     
     leftover_post_complete_layers_bytes = remaining_gpu_mem_bytes - complete_layers_size_est
 
