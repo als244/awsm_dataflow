@@ -202,7 +202,10 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     if verbose:
         print(f"[Working Set Log] Observed Available GPU Memory Capacity of {available_gpu_memory_capacity_bytes / (1 << 30):.2f}GB and Host Memory Capacity of {available_host_memory_capacity_bytes / (1 << 30):.2f}GB")
-        print(f"[Working Set Log] Inputted Max GPU Memory of {max_gpu_mem_bytes / (1 << 30):.2f}GB and Max Host Memory of {max_host_mem_bytes / (1 << 30):.2f}GB")
+        if max_gpu_mem_bytes is not None:
+            print(f"[Working Set Log] Inputted Max GPU Memory of {max_gpu_mem_bytes / (1 << 30):.2f}GB")
+        if max_host_mem_gytes is not None:
+            print(f"[Working Set Log] Max Host Memory of {max_host_mem_bytes / (1 << 30):.2f}GB")
         print(f"[Working Set Log] Using Leeway of {leeway_gpu_mem_bytes / (1 << 30):.2f}GB for GPU Memory and {leeway_host_mem_bytes / (1 << 30):.2f}GB for Host Memory")
 
     if max_gpu_mem_bytes is None:
