@@ -431,7 +431,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## we reuse gpu act buffer during opt step
     assert gpu_act_buffer_size_bytes >= backbone_sizes["opt_bytes"]
 
-    n_gpu_opt_layers = gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"]
+    n_gpu_opt_layers = int(gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"])
     
     est_total_gpu_bytes = baseline_act_gpu_memory + gpu_act_workspace_size_bytes + backbone_sizes["weight_bytes"] * n_gpu_layers + backbone_sizes["grad_bytes"] * n_gpu_grad_layers 
 
