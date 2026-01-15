@@ -32,11 +32,11 @@ MAX_SEQ_LEN = SEQ_LEN
 USE_MUON = False
 SAVE_FINAL = False
 
-MODEL_CHOICE = "nanogpt_124M"
+MODEL_CHOICE = "llama3_8B"
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
-SAVE_MODEL_PATH = f"fineweb_ckpts/my_{MODEL_CHOICE}_awsm"
+SAVE_MODEL_PATH = f"model_ckpts/my_{MODEL_CHOICE}_awsm"
 SAVE_CHECKPOINT_FREQ = 0
 
 RAND_SEED = 42
