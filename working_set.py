@@ -401,7 +401,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
                 if max_seq_len % chunk_size == 0:
                     chunk_size_options.append(chunk_size)
     else:
-        chunk_size_options = [d for d in init_chunk_size_options if d >= 256]
+        chunk_size_options = init_chunk_size_options
+
+    chunk_size_options = [d for d in chunk_size_options if d >= 256]
     
     cur_remaining_gpu_mem_bytes = remaining_gpu_mem_bytes
 
