@@ -370,6 +370,18 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     remaining_gpu_mem_bytes -= baseline_act_gpu_memory
 
+    ### first try to fill up the 1st layer worth of act slots
+    full_act_slot_size_bytes = get_full_act_slot_size_bytes(model_dims, target_chunk_size)
+
+    first_layer_act_slots = min(target_num_chunks, remaining_gpu_mem_bytes // full_act_slot_size_bytes)
+
+    if first_layer_act_slots < 1:
+        raise ValueError("Error: Not enough GPU memory to hold single act slot")
+
+    gpu_act_workspace_size_bytes = first_layer_act_slots * full_act_slot_size_bytes
+
+    remaining_gpu_mem_bytes -= gpu_act_workspace_size_bytes
+        
     ### TODO: indicate we need smaller chunk size
     #if cur_remaining_gpu_mem_bytes < 0:
     #    raise ValueError(f"Error: Could not find a valid configuration for target tokens per round {target_tokens_per_round}; estimated remaining GPU memory to be {cur_remaining_gpu_mem_bytes}")
@@ -393,35 +405,27 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     
     leftover_post_complete_layers_bytes = remaining_gpu_mem_bytes - complete_layers_size_est
 
-    ### if we can't fit additional layers assign remaining bytes all to gpu act workspace
-    if additional_complete_layers_est == 0:
-        gpu_act_workspace_bytes = leftover_post_complete_layers_bytes
-    else:
-        ### baseline for act workspace
-        gpu_act_workspace_bytes = additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, target_tokens_per_round)
+    ### baseline for act workspace
+    gpu_act_workspace_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, target_tokens_per_round)
+    
+    if gpu_act_workspace_bytes < backbone_sizes["opt_bytes"]:
+        gpu_act_workspace_bytes += leftover_post_complete_layers_bytes
         if gpu_act_workspace_bytes < backbone_sizes["opt_bytes"]:
-            gpu_act_workspace_bytes += leftover_post_complete_layers_bytes
-            if gpu_act_workspace_bytes < backbone_sizes["opt_bytes"]:
-                raise ValueError("Error: Not enough GPU memory to hold 2 layers of weights, grads, and optimizer state")
-        else:
-            ### if we can fit addtional model layer give priority to that, then grad layer then act workspace
-            if leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
-                n_gpu_layers += 1
-                leftover_post_complete_layers_bytes -= backbone_sizes["weight_bytes"]
-            if leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
-                n_gpu_grad_layers += 1
-                leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
-            gpu_act_workspace_bytes = leftover_post_complete_layers_bytes
-
-    full_act_slot_size = get_full_act_slot_size_bytes(model_dims, target_chunk_size)
+            raise ValueError("Error: Not enough GPU memory to have act buffer > 1 layer of opt state")
+    else:
+        ### if we can fit addtional model layer give priority to that, then grad layer then act workspace
+        if leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
+            n_gpu_layers += 1
+            leftover_post_complete_layers_bytes -= backbone_sizes["weight_bytes"]
+        if leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
+            n_gpu_grad_layers += 1
+            leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
+        gpu_act_workspace_bytes += leftover_post_complete_layers_bytes
 
     total_act_slots = target_num_chunks * num_local_layers
 
-    gpu_act_slots = min(total_act_slots, gpu_act_workspace_bytes // full_act_slot_size)
+    gpu_act_slots = min(total_act_slots, gpu_act_workspace_bytes // full_act_slot_size_bytes)
     
-    if gpu_act_slots < 1:
-        raise ValueError("Error: Not enough GPU memory to hold single act slot")
-
     gpu_act_buffer_size = gpu_act_slots * full_act_slot_size
     
     ## we reuse gpu act buffer during opt step
