@@ -106,7 +106,7 @@ train_seq_pool.add_random_sequences(MAX_STEPS * SEQS_PER_STEP, SEQ_LEN)
 
 
 
-working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, verbose=True, fixed_seq_len=SEQ_LEN)
+working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, verbose=True, fixed_seq_len=True)
 
 print("-------- Working Set Config --------")
 print(working_set_config)
