@@ -210,7 +210,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## might want a factor of 2 for the transfer duration to ensure no stalls during bwd, but this is normally good (also uss peak tflops instead of realistic/with recompute)
     target_upper_bound_tokens_per_round_est = min(max_tokens_per_round, math.ceil((layer_transfer_duration_sec * est_tflops * 1e12) / matmul_flops_per_token))
 
-    target_upper_bound_tokens_per_round = max(min_tokens_per_round, prev_high_div(target_upper_bound_tokens_per_round_est))
+    target_upper_bound_tokens_per_round = max(min_tokens_per_round_limit, prev_high_div(target_upper_bound_tokens_per_round_est))
 
     if verbose:
         print(f"[Working Set Log] Determined Layer Transfer Time of {layer_transfer_duration_sec * 1e3:.2f} ms, Orig Target Tokens Per Round Est: {target_upper_bound_tokens_per_round}")
@@ -262,7 +262,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
             else:
                 cur_tokens_per_round -= 1024
 
-            if cur_tokens_per_round < min_tokens_per_round:
+            if cur_tokens_per_round < min_tokens_per_round_limit:
                 raise ValueError(f"Error: Not enough memory to run with min tokens per round of: {min_tokens_per_round}")
 
     est_num_chunks = math.ceil(target_tokens_per_round / max_chunk_size)
