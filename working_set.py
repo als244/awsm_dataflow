@@ -12,7 +12,7 @@ import math
 
 ### during training we want very compute bound to hide latency of other ops
 ### so we use a large arith bound factor
-ARITH_BOUND_FACTOR = 20
+ARITH_BOUND_FACTOR = 10
 
 ### BYtes for all layers in host memory, head/grad + 1 full (master + grad + opt) in GPU memory
 def get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=None, has_embed=True, has_head=True):
@@ -502,9 +502,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
             best_option = option
         
         if best_option["n_gpu_layers"] == 1 and option["n_gpu_layers"] > 1:
-            best_option = option
-
-        if best_option["n_gpu_grad_layers"] == 1 and option["n_gpu_grad_layers"] > 1:
             best_option = option
 
        
