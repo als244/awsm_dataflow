@@ -417,14 +417,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
         ### this is on top of the 1 full layer we have as part of baseline
         additional_complete_layers_est = int(min(num_local_layers - 1, cur_remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes))
-
-        ### at this point we should be able to run, but we would
-        ### rather have smaller chunk size that would allow 2 layers
-        ### of weights/grads to also be stored
-        ### if no smaller chunk sizes > 
-        if "target_chunk_size" not in first_valid_option:
-            first_valid_option["target_chunk_size"] = chunk_size
-            first_valid_option["target_num_chunks"] = target_num_chunks
     
         n_gpu_layers = 1 + additional_complete_layers_est
         n_gpu_grad_layers = 1 + additional_complete_layers_est
