@@ -396,7 +396,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     additional_complete_layers_est = int(min(num_local_layers - 1, remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes))
 
     if verbose:
-        print(f"[Working Set Log] Determined # Additional Complete Layers (weights + grad + act slots): {additional_complete_layers_est}")
+        print(f"[Working Set Log] Determined Complete Compute Layers (weights + grad + act slots): {additional_complete_layers_est + 1}")
     
     n_gpu_layers = 1 + additional_complete_layers_est
     n_gpu_grad_layers = 1 + additional_complete_layers_est
