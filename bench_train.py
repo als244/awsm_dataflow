@@ -19,8 +19,8 @@ SEQ_LEN = 8192
 SEQS_PER_STEP = 68
 MAX_STEPS = 3
 
-MAX_HOST_MEM_GB = 70
-MAX_GPU_MEM_GB = 30
+MAX_HOST_MEM_GB = 80
+MAX_GPU_MEM_GB = 20
 
 TO_PROFILE_BACKEND = True
 TO_PROFILE_TORCH_MEMORY = False
@@ -118,7 +118,7 @@ if MAX_HOST_MEM_GB is not None:
 else:
     max_host_mem_bytes = None
 
-working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, verbose=True, fixed_seq_len=True, min_chunk_size=None, max_gpu_mem_bytes=max_gpu_mem_bytes, max_host_mem_bytes=max_host_mem_bytes)
+working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, verbose=True, fixed_seq_len=True, min_chunk_size=MIN_CHUNK_SIZE, max_gpu_mem_bytes=max_gpu_mem_bytes, max_host_mem_bytes=max_host_mem_bytes)
 
 print("-------- Working Set Config --------")
 print(working_set_config)
