@@ -298,6 +298,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ### now we need to determine number of tokens to at least take this long
     matmul_flops_per_token = get_layer_matmul_flops_per_token(model_dims)
 
+
+
     ### matmul computation time should be linearly proportional to tokens per round (if reached arithmetic intensity)
     ### this is likely an overestimate, and we would be ok with less tokens per round
 
@@ -374,7 +376,15 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     satisfied = False
 
-    chunk_size_options = sorted(get_divisors(target_tokens_per_round), reverse=True)
+    init_chunk_size_options = sorted(get_divisors(target_tokens_per_round), reverse=True)
+
+    if fixed_seq_len:
+        chunk_size_options = []
+        for chunk_size in init_chunk_size_options:
+            if chunk_size >= max_seq_len and chunk_size % max_seq_len == 0:
+                chunk_size_options.append(chunk_size)
+    else:
+        chunk_size_options = init_chunk_size_options
     
     cur_remaining_gpu_mem_bytes = remaining_gpu_mem_bytes
 
