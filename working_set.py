@@ -389,14 +389,14 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         target_num_chunks = math.ceil(target_tokens_per_round / chunk_size)
 
         ### this includes transition table, context window, and activation workspace
-        baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, target_chunk_size, target_num_chunks, training_config=training_config)
+        baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chunk_size, target_num_chunks, training_config=training_config)
 
         cur_remaining_gpu_mem_bytes -= baseline_act_gpu_memory
 
     
 
         ### first try to fill up the 1st layer worth of act slots
-        full_act_slot_size_bytes = get_full_act_slot_size_bytes(model_dims, target_chunk_size)
+        full_act_slot_size_bytes = get_full_act_slot_size_bytes(model_dims, chunk_size)
 
         first_layer_act_slots = min(target_num_chunks, cur_remaining_gpu_mem_bytes // full_act_slot_size_bytes)
 
@@ -413,7 +413,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         ### At this point we can equally divide remaining GPU memory to know how many complete
         ### layers (weights + grad + activations) we can store, however we will need to account
         ### for chunk size which may increase context window size + be a factor of addition memory workspace
-        additional_full_compute_layer_size_bytes = get_full_compute_layer_size_bytes(model_dims, target_tokens_per_round, backbone_sizes)
+        additional_full_compute_layer_size_bytes = get_full_compute_layer_size_bytes(model_dims, chunk_size, backbone_sizes)
 
         ### this is on top of the 1 full layer we have as part of baseline
         additional_complete_layers_est = int(min(num_local_layers - 1, cur_remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes))
@@ -434,7 +434,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         leftover_post_complete_layers_bytes = cur_remaining_gpu_mem_bytes - complete_layers_size_est
 
         ### baseline for act workspace
-        gpu_act_workspace_size_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, target_tokens_per_round)
+        gpu_act_workspace_size_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, chunk_size)
         
         if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
             gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
