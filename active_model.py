@@ -532,6 +532,7 @@ class ActiveModel:
 
         if verbose:
             print(f"Total Chunks: {total_chunks}")
+            print(f"Max Training Chunks: {self.max_training_chunks}")
             print(f"Total Round Tokens: {total_round_tokens}")
             print(f"Total GPU Act Slots: {self.n_gpu_act_slots}")
             print(f"Total Home Act Slots: {n_home_act_slots}")
