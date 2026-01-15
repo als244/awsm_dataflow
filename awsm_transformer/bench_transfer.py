@@ -40,12 +40,12 @@ def bench_transfer(num_bytes, src="cpu", dst="cuda:0", to_pin=True, n_reps=100, 
         start_time = time.perf_counter_ns()
 
         with primary_stream:
-            dst_tensor.copy_(src_tensor)
+            dst_tensor.copy_(src_tensor, non_blocking=True)
 
         if concurrent:
 
             with secondary_stream:
-                secondary_dst_tensor.copy_(secondary_src_tensor)
+                secondary_dst_tensor.copy_(secondary_src_tensor, non_blocking=True)
 
             primary_stream.wait_stream(secondary_stream)
         
