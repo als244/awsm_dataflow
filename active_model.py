@@ -1229,7 +1229,7 @@ class ActiveModel:
                         ## TODO: wait upon transition ready (for multi-GPU)
 
                         with self.compute_stream:
-                            self.profiler.range_push(f"Chunk {cur_chunk_id}")
+                            self.profiler.range_push(f"Forward: Chunk {cur_chunk_id}")
                             self.transitions_gpu[cur_chunk_id], computed_act_slot = layer.forward(self.transitions_gpu[cur_chunk_id], chunk["chunk_metadata"], self.model_weights_gpu[cur_weight_idx], self.act_slot_gpu[cur_act_slot_idx], self.fwd_context)
                             self.profiler.range_pop()
 
@@ -1391,13 +1391,13 @@ class ActiveModel:
                         dev_act_slot = self.dev_act_slot_mapping[(k, cur_chunk_id)]
 
                         with self.compute_stream:
-                            self.profiler.range_push(f"Chunk {cur_chunk_id} (Recompute)")
+                            self.profiler.range_push(f"Recompute: Chunk {cur_chunk_id}")
 
                             layer.forward_recompute(dev_act_slot, self.act_slot_gpu[cur_act_slot_idx], chunk["chunk_metadata"], self.model_weights_gpu[cur_weight_idx], self.fwd_context)
 
                             self.profiler.range_pop()
 
-                            self.profiler.range_push(f"Chunk {cur_chunk_id} (Backward)")
+                            self.profiler.range_push(f"Backward: Chunk {cur_chunk_id}")
                             self.transitions_gpu[cur_chunk_id] = layer.backward(self.transitions_gpu[cur_chunk_id], chunk["chunk_metadata"], self.model_weights_gpu[cur_weight_idx], self.grad_weights_gpu[cur_grad_weight_idx], dev_act_slot, self.fwd_context, self.bwd_context, total_tokens_per_step=total_tokens_per_step)
                             self.profiler.range_pop()
 
