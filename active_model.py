@@ -530,6 +530,11 @@ class ActiveModel:
 
         n_home_act_slots = max(0, total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots)
 
+        if verbose:
+            print(f"Total Chunks: {total_chunks}")
+            print(f"Total Round Tokens: {total_round_tokens}")
+            print(f"Total GPU Act Slots: {self.n_gpu_act_slots}")
+            print(f"Total Home Act Slots: {n_home_act_slots}")
         ### Use the DP solver to determine saved activtions levels
         ### Each options should be a (duration, size) tuple where
         ### the goal is to maximize size under constraint that finish_trans(chunk_{i}) <= start_compute(chunk_{i + n_gpu_slots})
