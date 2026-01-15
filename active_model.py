@@ -73,6 +73,7 @@ class ActiveModel:
 
         self.max_seq_len = working_set_config["max_seq_len"]
         self.max_chunk_size = working_set_config["max_chunk_size"]
+        self.max_training_chunks = working_set_config["max_training_chunks"]
         self.target_round_tokens = working_set_config["target_round_tokens"]
         self.max_total_round_tokens = working_set_config["max_total_round_tokens"]
 
@@ -756,37 +757,71 @@ class ActiveModel:
         return saved_levels
 
     def split_sequences(self, sequences):
-
+        
         target_round_tokens = self.target_round_tokens
         max_total_round_tokens = self.max_total_round_tokens
+        max_chunk_size = self.max_chunk_size
+        max_training_chunks = self.max_training_chunks
         
+        def estimate_chunks_for_seqs(seqs):
+            """Estimate how many chunks a list of sequences will produce."""
+            total_tokens = sum(len(s) for s in seqs)
+            
+            # Count chunks from large sequences (they get isolated)
+            large_seq_chunks = 0
+            small_seq_tokens = 0
+            
+            for s in seqs:
+                s_len = len(s)
+                if s_len > max_chunk_size:
+                    # Large sequences get ceil(s_len / max_chunk_size) dedicated chunks
+                    large_seq_chunks += (s_len + max_chunk_size - 1) // max_chunk_size
+                else:
+                    small_seq_tokens += s_len
+            
+            # Small sequences get packed together
+            small_seq_chunks = (small_seq_tokens + max_chunk_size - 1) // max_chunk_size if small_seq_tokens > 0 else 0
+            
+            return large_seq_chunks + small_seq_chunks
 
         round_seqs = []
-        cur_round_tokens = 0
-
         cur_round_seqs = []
-
+        cur_round_tokens = 0
         total_tokens = 0
-        for seq in sequences:
-            total_tokens += len(seq)
-            if cur_round_tokens + len(seq) > target_round_tokens:
-                ## package previous round and have this seq be part of new round
-                if cur_round_tokens > 0:
-                    round_seqs.append(cur_round_seqs) 
-                
-                if len(seq) > max_total_round_tokens:
-                    raise ValueError(f"Sequence is too long: {len(seq)} tokens")
-                cur_round_seqs = [seq]
-                cur_round_tokens = len(seq)
-                if len(seq) > target_round_tokens:
-                    round_seqs.append(cur_round_seqs)
-                    cur_round_tokens = 0
-                    cur_round_seqs = []
-            else:
-                cur_round_tokens += len(seq)
-                cur_round_seqs.append(seq)
 
-        if len(cur_round_seqs) > 0:
+        for seq in sequences:
+            seq_len = len(seq)
+            total_tokens += seq_len
+            
+            if seq_len > max_total_round_tokens:
+                raise ValueError(f"Sequence is too long: {seq_len} tokens")
+            
+            # Check if adding this sequence would exceed token limit
+            would_exceed_tokens = cur_round_tokens + seq_len > target_round_tokens
+            
+            # Check if adding this sequence would exceed chunk limit
+            tentative_seqs = cur_round_seqs + [seq]
+            would_exceed_chunks = estimate_chunks_for_seqs(tentative_seqs) > max_training_chunks
+            
+            # If either limit exceeded, finalize current round first
+            if cur_round_tokens > 0 and (would_exceed_tokens or would_exceed_chunks):
+                round_seqs.append(cur_round_seqs)
+                cur_round_seqs = []
+                cur_round_tokens = 0
+            
+            # Add sequence to current round
+            cur_round_seqs.append(seq)
+            cur_round_tokens += seq_len
+            
+            # Special case: single sequence that alone exceeds chunk limit or is very large
+            # It must go in its own round (can't be helped)
+            single_seq_chunks = estimate_chunks_for_seqs([seq])
+            if single_seq_chunks >= max_training_chunks or seq_len > target_round_tokens:
+                round_seqs.append(cur_round_seqs)
+                cur_round_seqs = []
+                cur_round_tokens = 0
+
+        if cur_round_seqs:
             round_seqs.append(cur_round_seqs)
 
         return round_seqs, total_tokens

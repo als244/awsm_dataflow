@@ -477,6 +477,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         "n_gpu_layers": min(n_gpu_layers, num_local_layers),
         "n_gpu_grads": min(n_gpu_grad_layers, num_local_layers),
         "n_gpu_opt_layers": min(n_gpu_opt_layers, num_local_layers),
+        "max_training_chunks": target_num_chunks,
         "max_chunk_size": target_chunk_size,
         "max_seq_len": max_seq_len,
         "target_round_tokens": target_tokens_per_round,
