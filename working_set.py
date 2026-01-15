@@ -5,10 +5,6 @@ from awsm_transformer.saved_activations_policy import get_transformer_saved_act_
 import copy
 import math
 
-### maybe 15% or so overhead vs. raw matmul hardware env baseline
-### due to norm overheads, thermal throttling, etc.
-PRACTICAL_EFFICIENCY_FACTOR = 0.85
-
 def get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=None, has_embed=True, has_head=True):
 
     required_gpu_bytes = 0
@@ -212,7 +208,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## for usual seq lens ignore attention flops and try to have enough tokens to hide weight/gradient transfer latency
     ## this sets a good upper bound for number of tokens per round, then we can lessen this to fit within memory constraints
     ## might want a factor of 2 for the transfer duration to ensure no stalls during bwd, but this is normally good (also uss peak tflops instead of realistic/with recompute)
-    target_upper_bound_tokens_per_round_est = min(max_tokens_per_round, math.ceil((PRACTICAL_EFFICIENCY_FACTOR * layer_transfer_duration_sec * est_tflops * 1e12) / matmul_flops_per_token))
+    target_upper_bound_tokens_per_round_est = min(max_tokens_per_round, math.ceil((layer_transfer_duration_sec * est_tflops * 1e12) / matmul_flops_per_token))
 
     target_upper_bound_tokens_per_round = max(min_tokens_per_round, prev_high_div(target_upper_bound_tokens_per_round_est))
 

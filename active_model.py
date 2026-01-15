@@ -13,7 +13,7 @@ _cudart = ctypes.CDLL('libcudart.so')
 _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
 
 ### maybe 15% or so overhead vs. raw matmul hardware env baseline
-### due to norm overheads, thermal throttling, etc.
+### due to norm overheads, attention efficiency, etc.
 PRACTICAL_EFFICIENCY_FACTOR = 0.85
 
 class ActiveModel:

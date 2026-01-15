@@ -235,7 +235,7 @@ def get_basic_peak_flops_est(n=8192, dtype=torch.bfloat16, device="cuda:0"):
     X = torch.randn(n, n, dtype=dtype, device=device)
     W = torch.randn(n, n, dtype=dtype, device=device)
 
-    matmul_duration_sec, matmul_throughput_flops_per_sec = bench_matmul(X, W, n_reps=100)
+    matmul_duration_sec, matmul_throughput_flops_per_sec = bench_matmul(X, W, n_reps=1000)
 
     torch.cuda.synchronize()
 
@@ -243,12 +243,12 @@ def get_basic_peak_flops_est(n=8192, dtype=torch.bfloat16, device="cuda:0"):
 
     return matmul_throughput_flops_per_sec
 
-def get_basic_peak_mem_bandwidth_gb_per_sec(n=8192, dtype=torch.bfloat16, device="cuda:0"):
+def get_basic_peak_mem_bandwidth_gb_per_sec(n=16384, dtype=torch.bfloat16, device="cuda:0"):
     
     X = torch.randn(1, n, dtype=dtype, device=device)
     W = torch.randn(n, n, dtype=dtype, device=device)
 
-    matmul_duration_sec, matmul_throughput_flops_per_sec = bench_matmul(X, W, n_reps=100)
+    matmul_duration_sec, matmul_throughput_flops_per_sec = bench_matmul(X, W, n_reps=1000)
 
     torch.cuda.synchronize()
 
@@ -262,7 +262,7 @@ def get_basic_peak_mem_bandwidth_gb_per_sec(n=8192, dtype=torch.bfloat16, device
     
 
 
-def get_hardware_env(chunk_size, model_dims, device_id=0, to_pin=True, n_transfer_reps=100, n_matmul_reps=100):
+def get_hardware_env(chunk_size, model_dims, device_id=0, to_pin=True, n_transfer_reps=100, n_matmul_reps=1000):
 
     transfer_report = get_transformer_transfer_report(chunk_size, model_dims, device_id=device_id, to_pin=to_pin, n_reps=n_transfer_reps)
 
