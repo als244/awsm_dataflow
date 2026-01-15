@@ -242,14 +242,14 @@ def round_to_nearest_divisor(value, divisor_of, direction=None):
         # Largest divisor <= value
         candidates = [d for d in divisors if d <= value]
         if not candidates:
-            raise ValueError(f"No divisor of {divisor_of} is <= {value}")
+            return 1
         return max(candidates)
     
     elif direction == 'up':
         # Smallest divisor >= value
         candidates = [d for d in divisors if d >= value]
         if not candidates:
-            raise ValueError(f"No divisor of {divisor_of} is >= {value}")
+            return divisor_of
         return min(candidates)
     
     else:
