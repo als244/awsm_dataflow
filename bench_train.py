@@ -283,7 +283,7 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
 
     tflops_per_sec = (step_flops / step_duration) / 1e12
 
-    print(f"\tThroughput --- {tokens_per_sec:.2f} Tokens/sec, {tflops_per_sec:.2f} Effective TFLOPS\n\nSmoothed Loss: {loss_smoothed:.4f}\n\tOverall Tokens Processed: {total_tokens / 1e6:.2f}M, Overall Sequences Processed: {total_seqs / 1e3:.2f}k, Overall Time: {(end_time - train_start_time) / 60:.2f}min\n\n", flush=True)
+    print(f"\tStep Time: {step_duration:.2f}sec\tThroughput --- {tokens_per_sec:.2f} Tokens/sec, {tflops_per_sec:.2f} Effective TFLOPS\n\nSmoothed Loss: {loss_smoothed:.4f}\n\tOverall Tokens Processed: {total_tokens / 1e6:.2f}M, Overall Sequences Processed: {total_seqs / 1e3:.2f}k, Overall Time: {(end_time - train_start_time) / 60:.2f}min\n\n", flush=True)
 
     cur_step_stats["loss_smoothed"] = loss_smoothed
     cur_step_stats["step_tokens_per_sec"] = tokens_per_sec
