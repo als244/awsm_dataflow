@@ -329,7 +329,14 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     if verbose:
         print(f"[Working Set Log] Baseline Target Tokens Per Round for Sufficient Computation Time: {target_tokens_per_round}")
     
-    target_tokens_per_round = round_to_nearest(target_tokens_per_round, 256)
+    agg_act_bytes_per_token = num_local_layers * get_full_compute_layer_size_bytes(model_dims, 1)
+    
+    full_save_tokens_per_round = math.ceil(remaining_total_mem / (agg_act_bytes_per_token))
+
+    if verbose:
+        print(f"[Working Set Log] Based on aggregate available memory to save all activations must use <= {full_save_tokens_per_round}")
+
+    target_tokens_per_round = min(target_tokens_per_round, full_save_tokens_per_round)
 
     ### cannot exceed max tokens per round determined by memory constraints
     target_tokens_per_round = min(max_tokens_per_round, target_tokens_per_round)
