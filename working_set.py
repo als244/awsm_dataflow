@@ -52,12 +52,16 @@ def get_baseline_model_memory_requirements(model_dims, num_local_layers, trainin
 
     ### Require embed/head training state in GPU memory
 
+    endpoint_sizes = {"embed_bytes": 0, "head_bytes": 0}
+
     if has_embed and grad_dims is not None:
         embed_master_bytes = get_embedding_size_bytes(master_dims)
         embed_grad_bytes = get_embedding_size_bytes(grad_dims)
         embed_opt_bytes = opt_mult * get_embedding_size_bytes(opt_dims)
 
         required_gpu_bytes += embed_master_bytes + embed_grad_bytes + embed_opt_bytes
+
+        endpoint_sizes["embed_bytes"] = embed_master_bytes + embed_grad_bytes + embed_opt_bytes
 
         ## for simplicity require copy in host memory
         required_host_bytes += embed_master_bytes + embed_grad_bytes + embed_opt_bytes
@@ -68,6 +72,8 @@ def get_baseline_model_memory_requirements(model_dims, num_local_layers, trainin
         head_opt_bytes = opt_mult * get_head_size_bytes(opt_dims)
 
         required_gpu_bytes += head_master_bytes + head_grad_bytes + head_opt_bytes
+
+        endpoint_sizes["head_bytes"] = head_master_bytes + head_grad_bytes + head_opt_bytes
 
         ## for simplicity require copy in host memory
         required_host_bytes += head_master_bytes + head_grad_bytes + head_opt_bytes
@@ -99,7 +105,7 @@ def get_baseline_model_memory_requirements(model_dims, num_local_layers, trainin
 
     
         
-    return required_gpu_bytes, required_host_bytes, backbone_sizes
+    return required_gpu_bytes, required_host_bytes, endpoint_sizes, backbone_sizes
 
 ### this is during computation, so we arent using master weights/opt
 ### this doesnt account for transition table or context windows
@@ -212,7 +218,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
             raise ValueError("max_host_mem_bytes is greater than available_host_memory_capacity_bytes")
 
     
-    baseline_gpu_bytes, baseline_host_bytes, backbone_sizes = get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=training_config, has_embed=has_embed, has_head=has_head)
+    baseline_gpu_bytes, baseline_host_bytes, endpoint_sizes, backbone_sizes = get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=training_config, has_embed=has_embed, has_head=has_head)
     
     if max_gpu_mem_bytes < baseline_gpu_bytes:
         raise ValueError(f"max_gpu_mem_bytes ({max_gpu_mem_bytes / (1 << 30):,.3f}GB) is less than required minimum baseline_gpu_bytes ({baseline_gpu_bytes / (1 << 30):,.2f}GB)")
@@ -440,7 +446,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     n_gpu_opt_layers = int(min(num_local_layers, gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"]))
     
-    est_total_gpu_bytes = baseline_act_gpu_memory + gpu_act_workspace_size_bytes + backbone_sizes["weight_bytes"] * n_gpu_layers + backbone_sizes["grad_bytes"] * n_gpu_grad_layers 
+    endpoint_bytes = endpoint_sizes["embed_bytes"] + endpoint_sizes["head_bytes"]
+    est_total_gpu_bytes = baseline_act_gpu_memory + gpu_act_workspace_size_bytes + backbone_sizes["weight_bytes"] * n_gpu_layers + backbone_sizes["grad_bytes"] * n_gpu_grad_layers + endpoint_bytes
 
     assert est_total_gpu_bytes <= max_gpu_mem_bytes
 
