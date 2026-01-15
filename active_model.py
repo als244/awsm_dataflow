@@ -12,6 +12,10 @@ from transmission_scheduler import TransmissionScheduler
 _cudart = ctypes.CDLL('libcudart.so')
 _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
 
+### maybe 15% or so overhead vs. hardware env baseline
+### due to norm overheads, thermal throttling, etc.
+PRACTICAL_EFFICIENCY_FACTOR = 0.85
+
 class ActiveModel:
     def __init__(self, model_name, model_layers, working_set_config, local_config, hardware_env, chunk_metadata_func, embed_layer=None, head_layer=None, to_train=True, local_device="cuda:0", group_config=None):
         self.model_name = model_name
@@ -563,11 +567,11 @@ class ActiveModel:
                     chunk_metadata = chunk["chunk_metadata"]
                     chunk_id = chunk["id"]
                     total_fwd_flops, saved_fwd_flops = self.model_layers[layer_id].get_fwd_flops(chunk_metadata)
-                    compute_times[layer_num * total_chunks + chunk_id] = (total_fwd_flops / (self.peak_tflops_est * 1e12)) * 1e3
+                    compute_times[layer_num * total_chunks + chunk_id] = (total_fwd_flops / (PRACTICAL_EFFICIENCY_FACTOR * self.peak_tflops_est * 1e12)) * 1e3
                     total_fwd_time_ms += compute_times[layer_num * total_chunks + chunk_id]
                     for saved_level in range(num_saved_activation_levels):
                         recompute_flops = saved_fwd_flops[saved_level]
-                        recompute_time_ms = recompute_flops / (self.peak_tflops_est * 1e12) * 1e3
+                        recompute_time_ms = recompute_flops / (PRACTICAL_EFFICIENCY_FACTOR * self.peak_tflops_est * 1e12) * 1e3
                         saved_option_values[layer_num * total_chunks + chunk_id, saved_level] = recompute_time_ms
 
         ### now for each chunk get the sizes of different levels of saved activations
