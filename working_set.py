@@ -175,10 +175,8 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     ## Working space during execution
 
     ## for moe models we need scatter space
-
-    ## really should be 2, but having problems here...
     moe_workspace = 2 * (chunk_size * model_dims["top_k"] * model_dims["d_model"]) * residual_dtype.itemsize
-    dense_workspace = model_dims["num_shared_experts"] * chunk_size * model_dims["expert_dim"] * residual_dtype.itemsize
+    dense_workspace = chunk_size * (2 * model_dims["d_model"] + model_dims["num_shared_experts"] * model_dims["expert_dim"]) * residual_dtype.itemsize
     gpu_working_space_bytes = moe_workspace + dense_workspace
     required_gpu_bytes += gpu_working_space_bytes
 
