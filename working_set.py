@@ -414,10 +414,10 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
             raise ValueError("Error: Not enough GPU memory to have act buffer > 1 layer of opt state")
     else:
         ### if we can fit addtional model layer give priority to that, then grad layer then act workspace
-        if leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
+        if n_gpu_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
             n_gpu_layers += 1
             leftover_post_complete_layers_bytes -= backbone_sizes["weight_bytes"]
-        if leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
+        if n_gpu_grad_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
             n_gpu_grad_layers += 1
             leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
         gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
@@ -431,7 +431,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## we reuse gpu act buffer during opt step
     assert gpu_act_buffer_size_bytes >= backbone_sizes["opt_bytes"]
 
-    n_gpu_opt_layers = int(gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"])
+    n_gpu_opt_layers = min(num_local_layers, int(gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"]))
     
     est_total_gpu_bytes = baseline_act_gpu_memory + gpu_act_workspace_size_bytes + backbone_sizes["weight_bytes"] * n_gpu_layers + backbone_sizes["grad_bytes"] * n_gpu_grad_layers 
 
@@ -462,9 +462,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / 1e9:.2f}GB, Expected Host Memory Usage: {est_total_host_bytes / 1e9:.2f}GB")
 
     working_set_config = {
-        "n_gpu_layers": n_gpu_layers,
-        "n_gpu_grads": n_gpu_grad_layers,
-        "n_gpu_opt_layers": n_gpu_opt_layers,
+        "n_gpu_layers": min(n_gpu_layers, num_local_layers),
+        "n_gpu_grads": min(n_gpu_grad_layers, num_local_layers),
+        "n_gpu_opt_layers": min(n_gpu_opt_layers, num_local_layers),
         "max_chunk_size": target_chunk_size,
         "max_seq_len": max_seq_len,
         "target_round_tokens": target_tokens_per_round,
