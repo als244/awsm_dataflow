@@ -516,7 +516,7 @@ class ActiveModel:
         return
 
           
-    def determine_saved_levels(self, seq_groups, verbose=False):
+    def determine_saved_levels(self, seq_groups, verbose=True):
 
         total_chunks = sum([len(seq_group) for seq_group in seq_groups])
         total_round_tokens = 0
@@ -646,6 +646,9 @@ class ActiveModel:
             print(f"Initial Total Saved Bytes: {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB")
         
         if np.sum(key_saved_act_chosen_sizes) > self.cpu_act_buffer_size:
+
+            if verbose:
+                print(f"Not enough host act buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB, so will now demote saved activations")
 
             ## check if all minimally saved, then major errrory and we need to reduce tokens per round
             if np.sum(key_saved_act_choices) == 0:
