@@ -357,6 +357,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         
     target_chunk_size = round_to_nearest_divisor(init_target_min_chunk_size, target_tokens_per_round, direction="up")
 
+    if min_chunk_size is not None:
+        target_chunk_size = max(min_chunk_size, target_chunk_size)
+
     if verbose:
         print(f"[Working Set Log] Determined Target Chunk Size Est: {target_chunk_size}")
 
