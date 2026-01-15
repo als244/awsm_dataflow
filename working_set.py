@@ -456,6 +456,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     min_act_slot_size_bytes = saved_act_sizes[0]
 
     min_host_act_buffer_size_bytes = host_act_slots * min_act_slot_size_bytes
+    print(f"[Working Set Log] Determined Min Host Act Buffer Size of {min_host_act_buffer_size_bytes / 1e9:.2f}GB")
 
     assert host_act_buffer_size_bytes >= min_host_act_buffer_size_bytes
     
