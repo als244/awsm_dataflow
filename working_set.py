@@ -320,10 +320,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         target_tokens_per_round = max(min_tokens_per_round, target_tokens_per_round)
 
     if fixed_seq_len:
-        target_tokens_per_round = round_to_nearest(target_tokens_per_round, fixed_seq_len)
-        print("Target Tokens Per Round: ", target_tokens_per_round)
+        target_tokens_per_round = round_to_nearest(target_tokens_per_round, max_seq_len)
         if target_tokens_per_round > max_tokens_per_round:
-            target_tokens_per_round -= fixed_seq_len
+            target_tokens_per_round -= max_seq_len
             if target_tokens_per_round > max_tokens_per_round or target_tokens_per_round == 0:
                 raise ValueError(f"Error: Could not find a valid configuration for fixed seq len {fixed_seq_len}; estimated max tokens per round to be {target_tokens_per_round}")
     else:
