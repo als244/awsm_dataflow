@@ -12,7 +12,7 @@ from transmission_scheduler import TransmissionScheduler
 _cudart = ctypes.CDLL('libcudart.so')
 _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
 
-### maybe 15% or so overhead vs. hardware env baseline
+### maybe 15% or so overhead vs. raw matmul hardware env baseline
 ### due to norm overheads, thermal throttling, etc.
 PRACTICAL_EFFICIENCY_FACTOR = 0.85
 
