@@ -298,10 +298,18 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ### now we need to determine number of tokens to at least take this long
     matmul_flops_per_token = get_layer_matmul_flops_per_token(model_dims)
 
+    
+    
+  
+
+    flops_per_token_est = matmul_flops_per_token + (attn_flops_min_est / max_seq_len)
+    ### matmul computation time should be linearly proportional to tokens per round (if reached arithmetic intensity)
+    ### this is likely an overestimate, and we would be ok with less tokens per round
+
     ### as we might not know seqlen ahead of time we can conservatively ignore attention flops
     ### (means more tokens per round than if we accounted for it)
     attn_flops_min_est = 0
-    
+
     ## if fixed seq len we know seq len exactly and can use it to better get better estimate
     ## for layer time (knowing we need at least 1 sequence per round)
     ## if we have multiple seqs per round this is still an underestimate but ok
@@ -309,15 +317,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         attn_factor = 1
         if model_dims["is_causal"]:
             attn_factor = 0.5
-        attn_flops_min_est = attn_factor * max_seq_len * max_seq_len * model_dims["head_dim"] * model_dims["n_heads"]   
-
-    flops_per_token_est = matmul_flops_per_token + (attn_flops_min_est / max_seq_len)
-    ### matmul computation time should be linearly proportional to tokens per round (if reached arithmetic intensity)
-    ### this is likely an overestimate, and we would be ok with less tokens per round
+        attn_flops_min_est = attn_factor * max_seq_len * max_seq_len * model_dims["head_dim"] * model_dims["n_heads"] 
 
     target_layer_flops = min_layer_computation_time * est_tflops * 1e12
 
-    target_tokens_per_round = math.ceil(target_layer_flops / flops_per_token_est)
+    target_tokens_per_round = math.ceil((target_layer_flops - attn_flops_min_est) / flops_per_token_est)
 
     if fixed_seq_len:
         target_tokens_per_round = max(max_seq_len, target_tokens_per_round)
