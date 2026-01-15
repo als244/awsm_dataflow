@@ -355,7 +355,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         init_target_min_chunk_size = ARITH_BOUND_FACTOR * H * K * N / (K * N - H * (K + N))
     
     if verbose:
-        print(f"[Working Set Log] Determined Initial Target Min Chunk Size Est (based on Arithmetic Intensity) of: {init_target_min_chunk_size}")
+        print(f"[Working Set Log] Determined Initial Target Min Chunk Size Est (based on Arithmetic Intensity bound x factor of {ARITH_BOUND_FACTOR}) of: {init_target_min_chunk_size}")
 
     
     if min_chunk_size is not None:
