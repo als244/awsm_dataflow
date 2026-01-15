@@ -1069,6 +1069,9 @@ class ActiveModel:
         if loss_scale_factor is None:
             loss_scale_factor = 1.0
 
+        with self.compute_stream:
+            self.profiler.range_push("Fwd+Bwd")
+
         for round_seqs in all_round_seqs:
 
             self.home_act_slot_available_events.clear()
@@ -1091,8 +1094,9 @@ class ActiveModel:
                 self.profiler.range_pop()
                 
 
-                ### We need to sync here to not mess up prior round data structures
-                ### (dont want to overwrite any class objects)
+                ### We should to sync here (beginning of each round) for simplicity
+                ### and clarity; cpu thread blocks until the complettion of final
+                ### computation of prior round finishes
                 self.compute_stream.synchronize()
 
 
@@ -1114,18 +1118,20 @@ class ActiveModel:
                     self.cpu_cur_act_buffer_offset += total_bytes
                     self.cpu_cur_act_buffer = self.cpu_act_buffer[self.cpu_cur_act_buffer_offset:]
                 self.profiler.range_pop()
-
+                
                 ## initialize transitions
                 if self.embed_layer is not None:
                     
+                    self.profiler.range_push("Embedding")
+
                     for chunk_id, chunk in chunk_mapping.items():
                         chunk_metadata = chunk["chunk_metadata"]
                         chunk_token_ids = chunk["chunk_token_ids"]
                         self.transitions_gpu[chunk_id] = self.embed_layer.forward(chunk_token_ids, self.embed_gpu["weights"])
                         #torch.cuda.synchronize()
                         #torch.save(self.transitions_gpu[chunk_id], "fineweb_ckpts/my_compare_moe/acts/fwd_embed.pt")
-               
-                self.profiler.range_pop()
+                    
+                    self.profiler.range_pop()
 
 
             with self.compute_stream:
@@ -1502,14 +1508,20 @@ class ActiveModel:
             ### freeing, and then cpu thread becomes unblocked. 
             ### depending on memory constraints (if super tight) we may
             ### want to do this. 
+            ### Makes sense for cases of variable seq lens, but at cost
+            ### of ~1-5% perf hit
             #torch.cuda.empty_cache()
 
         ## ensure all updated gradients are sent home before returning
         self.compute_stream.synchronize()
         self.outbound_stream.synchronize()
-
+        
         ### makes sense to clean up here
         torch.cuda.empty_cache()
+
+        ### completion of fwd_bwd
+        with self.compute_stream:
+            self.profiler.range_pop()
         
         
     
