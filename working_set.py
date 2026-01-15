@@ -389,6 +389,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         for chunk_size in init_chunk_size_options:
             if chunk_size >= max_seq_len and chunk_size % max_seq_len == 0:
                 chunk_size_options.append(chunk_size)
+            else:
+                if max_seq_len % chunk_size == 0:
+                    chunk_size_options.append(max_seq_len)
     else:
         chunk_size_options = init_chunk_size_options
     
