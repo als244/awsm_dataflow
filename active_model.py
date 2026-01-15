@@ -660,9 +660,13 @@ class ActiveModel:
                 print(f"Wanting to save more activations {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / 1e9:.2f}GB; demoting levels until satisfied. Need to demote {required_demotion_bytes} bytes")
 
             demotion_bytes = 0
+            satisfied = False
 
             ## do same thing (3->2, 2->1) until we might need to do special treatment for attention demotion
             for level_to_demote in range(num_saved_activation_levels - 1, 1, -1):
+
+                if satisfied:
+                    break
                 
                 inds = np.where(key_saved_act_choices == level_to_demote)[0]
 
@@ -675,31 +679,37 @@ class ActiveModel:
                     key_saved_act_choices[i] = level_to_demote - 1
                     key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, level_to_demote - 1]
                     if demotion_bytes >= required_demotion_bytes:
+                        satisfied = True
                         break
 
-            ### for attention demotion there might be different significantly different "values"
-            ### associated with same transfer cost, so we want to demote the lowest value chunks first (i.e. early chunks in seq groups)
 
-            attn_only_save_inds = np.where(key_saved_act_choices == 1)[0]
-            ### now determine value == recompute_time and start demoting smallest first
-
-            attn_only_save_values = saved_option_values[attn_only_save_inds, 1]
+            if not satisfied:
             
-            sorted_attn_only_inds = attn_only_save_inds[np.argsort(attn_only_save_values)]
+                ### for attention demotion there might be different significantly different "values"
+                ### associated with same transfer cost, so we want to demote the lowest value chunks first (i.e. early chunks in seq groups)
 
-            for i in sorted_attn_only_inds:
-                extra_bytes = key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, 0]
-                demotion_bytes += extra_bytes
-                if verbose:
-                    print(f"Demoting activation slot index {i} from level 1 to 0 to save {extra_bytes} bytes")
-                key_saved_act_choices[i] = 0
-                key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, 0]
-                if demotion_bytes >= required_demotion_bytes:
-                    break
+                attn_only_save_inds = np.where(key_saved_act_choices == 1)[0]
+                ### now determine value == recompute_time and start demoting smallest first
 
-            ## if we reach here then we fully demoted everything and still need more space
-            ## so report same error as we started with
-            raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
+                attn_only_save_values = saved_option_values[attn_only_save_inds, 1]
+                
+                sorted_attn_only_inds = attn_only_save_inds[np.argsort(attn_only_save_values)]
+
+                for i in sorted_attn_only_inds:
+                    extra_bytes = key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, 0]
+                    demotion_bytes += extra_bytes
+                    if verbose:
+                        print(f"Demoting activation slot index {i} from level 1 to 0 to save {extra_bytes} bytes")
+                    key_saved_act_choices[i] = 0
+                    key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, 0]
+                    if demotion_bytes >= required_demotion_bytes:
+                        satisfied = True
+                        break
+
+                if not satisfied:
+                    ## if we reach here then we fully demoted everything and still need more space
+                    ## so report same error as we started with
+                    raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
 
     
         ### Now: "key_saved_act_choices" contains the final choices with valid config
