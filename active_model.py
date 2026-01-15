@@ -815,35 +815,28 @@ class ActiveModel:
         for seq in sequences:
             seq_len = len(seq)
             total_tokens += seq_len
-            
+
             if seq_len > max_total_round_tokens:
                 raise ValueError(f"Sequence is too long: {seq_len} tokens")
-            
+
             # Check if adding this sequence would exceed token limit
             would_exceed_tokens = cur_round_tokens + seq_len > target_round_tokens
-            
+
             # Check if adding this sequence would exceed chunk limit
             tentative_seqs = cur_round_seqs + [seq]
             would_exceed_chunks = estimate_chunks_for_seqs(tentative_seqs) > max_training_chunks
-            
+
             # If either limit exceeded, finalize current round first
-            if cur_round_tokens > 0 and (would_exceed_tokens or would_exceed_chunks):
-                round_seqs.append(cur_round_seqs)
-                cur_round_seqs = []
-                cur_round_tokens = 0
-            
-            # Add sequence to current round
-            cur_round_seqs.append(seq)
-            cur_round_tokens += seq_len
-            
-            # Special case: single sequence that alone exceeds chunk limit or is very large
-            # It must go in its own round (can't be helped)
-            single_seq_chunks = estimate_chunks_for_seqs([seq])
-            if single_seq_chunks >= max_training_chunks or seq_len > target_round_tokens:
+            if cur_round_seqs and (would_exceed_tokens or would_exceed_chunks):
                 round_seqs.append(cur_round_seqs)
                 cur_round_seqs = []
                 cur_round_tokens = 0
 
+            # Add sequence to current round
+            cur_round_seqs.append(seq)
+            cur_round_tokens += seq_len
+
+        # Don't forget the last round
         if cur_round_seqs:
             round_seqs.append(cur_round_seqs)
 
