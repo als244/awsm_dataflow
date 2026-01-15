@@ -197,7 +197,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     available_host_memory_capacity_bytes = baseline_hardware_env["available_host_memory_capacity"]
 
     if verbose:
-        print(f"[Working Set Log] Observed Available GPU Memory Capacity of {available_gpu_memory_capacity_bytes / 1e9:.2f}GB and Host Memory Capacity of {available_host_memory_capacity_bytes / 1e9:.2f}GB")
+        print(f"[Working Set Log] Observed Available GPU Memory Capacity of {available_gpu_memory_capacity_bytes / (1 << 30):.2f}GB and Host Memory Capacity of {available_host_memory_capacity_bytes / (1 << 30):.2f}GB")
 
     if max_gpu_mem_bytes is None:
         max_gpu_mem_bytes = available_gpu_memory_capacity_bytes - leeway_gpu_mem_bytes
@@ -215,15 +215,15 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     baseline_gpu_bytes, baseline_host_bytes, backbone_sizes = get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=training_config, has_embed=has_embed, has_head=has_head)
     
     if max_gpu_mem_bytes < baseline_gpu_bytes:
-        raise ValueError(f"max_gpu_mem_bytes ({max_gpu_mem_bytes / 1e9:,.3f}GB) is less than required minimum baseline_gpu_bytes ({baseline_gpu_bytes / 1e9:,.2f}GB)")
+        raise ValueError(f"max_gpu_mem_bytes ({max_gpu_mem_bytes / (1 << 30):,.3f}GB) is less than required minimum baseline_gpu_bytes ({baseline_gpu_bytes / (1 << 30):,.2f}GB)")
     if max_host_mem_bytes < baseline_host_bytes:
-        raise ValueError(f"max_host_mem_bytes ({max_host_mem_bytes / 1e9:,.3f}GB) is less than required minimum baseline_host_bytes ({baseline_host_bytes / 1e9:,.2f}GB)")
+        raise ValueError(f"max_host_mem_bytes ({max_host_mem_bytes / (1 << 30):,.3f}GB) is less than required minimum baseline_host_bytes ({baseline_host_bytes / (1 << 30):,.2f}GB)")
 
     remaining_gpu_mem_bytes = max_gpu_mem_bytes - baseline_gpu_bytes
     remaining_host_mem_bytes = max_host_mem_bytes - baseline_host_bytes
 
     if verbose:
-        print(f"[Working Set Log] After Baseline Model Memory Requirements, Determined: Remaining GPU Memory of {remaining_gpu_mem_bytes / 1e9:,.2f}GB and Remaining Host Memory of {remaining_host_mem_bytes / 1e9:,.2f}GB")
+        print(f"[Working Set Log] After Baseline Model Memory Requirements, Determined: Remaining GPU Memory of {remaining_gpu_mem_bytes / (1 << 30):,.2f}GB and Remaining Host Memory of {remaining_host_mem_bytes / (1 << 30):,.2f}GB")
     
 
     ### Now we can fit at least 1 full layer in GPU memory (+ embed/head full training state)
@@ -260,7 +260,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         raise ValueError(f"Could not find a valid configuration for seq len {max_seq_len}; estimating max tokens per round to be {max_tokens_per_round}")
     
     if verbose:
-        print(f"[Working Set Log] Determined Max Tokens Per Round of {max_tokens_per_round} based on aggregate available memory of {remaining_total_mem / 1e9:.2f}GB, and GPU memory of {remaining_gpu_mem_bytes / 1e9:.2f}GB")
+        print(f"[Working Set Log] Determined Max Tokens Per Round of {max_tokens_per_round} based on aggregate available memory of {remaining_total_mem / (1 << 30):.2f}GB, and GPU memory of {remaining_gpu_mem_bytes / (1 << 30):.2f}GB")
 
 
 
@@ -465,8 +465,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     assert est_total_host_bytes <= max_host_mem_bytes
     
     if verbose:
-        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / 1e9:.2f}GB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / 1e9:.2f}GB")
-        print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / 1e9:.2f}GB, Expected Host Memory Usage: {est_total_host_bytes / 1e9:.2f}GB")
+        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / (1 << 30):.2f}GB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / (1 << 30):.2f}GB")
+        print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / (1 << 30):.2f}GB, Expected Host Memory Usage: {est_total_host_bytes / (1 << 30):.2f}GB")
 
     working_set_config = {
         "n_gpu_layers": min(n_gpu_layers, num_local_layers),
@@ -478,8 +478,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         "max_total_round_tokens": max_tokens_per_round,
         "host_act_buffer_size": int(host_act_buffer_size_bytes),
         "gpu_act_buffer_size": int(gpu_act_buffer_size_bytes),
-        "max_host_mem_gb": max_host_mem_bytes / 1e9,
-        "max_gpu_mem_gb": max_gpu_mem_bytes / 1e9,
+        "max_host_mem_gb": max_host_mem_bytes / (1 << 30),
+        "max_gpu_mem_gb": max_gpu_mem_bytes / (1 << 30),
     }
 
     if verbose:
