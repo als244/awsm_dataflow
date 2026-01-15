@@ -207,6 +207,54 @@ def round_to_nearest(x, base):
     # Cast to int if the result is a float
     return int(rounded_x)
 
+def round_to_nearest_divisor(value, divisor_of, direction=None):
+    """
+    Round 'value' to the nearest divisor of 'divisor_of'.
+    
+    Args:
+        value: The number to round
+        divisor_of: Find divisors of this number
+        direction: None (nearest), 'up' (ceiling), or 'down' (floor)
+    
+    Returns:
+        The divisor of 'divisor_of' closest to 'value' in the specified direction
+    """
+    if divisor_of == 0:
+        raise ValueError("divisor_of cannot be zero")
+    
+    divisor_of = abs(divisor_of)
+    
+    # Find all divisors
+    divisors = []
+    for i in range(1, int(divisor_of**0.5) + 1):
+        if divisor_of % i == 0:
+            divisors.append(i)
+            if i != divisor_of // i:
+                divisors.append(divisor_of // i)
+    
+    divisors.sort()
+    
+    if direction is None:
+        # Nearest divisor
+        return min(divisors, key=lambda d: abs(d - value))
+    
+    elif direction == 'down':
+        # Largest divisor <= value
+        candidates = [d for d in divisors if d <= value]
+        if not candidates:
+            raise ValueError(f"No divisor of {divisor_of} is <= {value}")
+        return max(candidates)
+    
+    elif direction == 'up':
+        # Smallest divisor >= value
+        candidates = [d for d in divisors if d >= value]
+        if not candidates:
+            raise ValueError(f"No divisor of {divisor_of} is >= {value}")
+        return min(candidates)
+    
+    else:
+        raise ValueError("direction must be None, 'up', or 'down'")
+
 
 def get_divisors(x):
     divisors = []
