@@ -657,7 +657,7 @@ class ActiveModel:
             required_demotion_bytes = np.sum(key_saved_act_chosen_sizes) - self.cpu_act_buffer_size
 
             if verbose:
-                print(f"Wanting to save more activations {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / 1e9:.2f}GB; demoting levels until satisfied...")
+                print(f"Wanting to save more activations {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / 1e9:.2f}GB; demoting levels until satisfied. Need to demote {required_demotion_bytes} bytes")
 
             demotion_bytes = 0
 
