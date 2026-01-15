@@ -15,15 +15,21 @@ import time
 
 all_model_dims = json.load(open("model_dims.json"))
 
+SEQ_LEN = 8192
+SEQS_PER_STEP = 72
+MAX_STEPS = 10
+
 TO_PROFILE_BACKEND = False
 TO_PROFILE_TORCH_MEMORY = False
 MAX_STEPS = None
 TO_SAVE_ERROR = True
 
+
+
 DEVICE_ID = 0
-MAX_TOKENS_PER_STEP = 524288
-MIN_SEQ_LEN = 256
-MAX_SEQ_LEN = 8192
+MAX_TOKENS_PER_STEP = SEQ_LEN * SEQS_PER_STEP
+MIN_SEQ_LEN = SEQ_LEN
+MAX_SEQ_LEN = SEQ_LEN
 USE_MUON = False
 SAVE_FINAL = False
 
@@ -97,20 +103,7 @@ print(f"Creating sequences", flush=True)
 
 train_seq_pool = SequencePool(vocab_size=model_dims["vocab_size"], min_seq_len=MIN_SEQ_LEN, max_seq_len=MAX_SEQ_LEN)
 
-NUM_SHARDS = 20
-
-### TODO: This should be loaded in background asynchronously...
-### right now has high fixed cost for init time to create all sequences...
-for shard_index in range(1, NUM_SHARDS + 1):
-    shard_path = f"fineweb10B/fineweb_train_{shard_index:06d}.bin"
-    num_seqs_loaded = train_seq_pool.load_sequences_from_shard(shard_path,token_dtype=np.uint16, start_id=50256, end_id=50256)
-    print(f"Loaded {num_seqs_loaded} sequences from {shard_path}", flush=True)
-
-
-
-
-
-
+train_seq_pool.add_random_sequences(MAX_STEPS * SEQS_PER_STEP, SEQ_LEN)
 
 
 
