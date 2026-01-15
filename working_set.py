@@ -311,7 +311,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
             attn_factor = 0.5
         attn_flops_min_est = attn_factor * max_seq_len * max_seq_len * model_dims["head_dim"] * model_dims["n_heads"]   
 
-    flops_per_token_est = matmul_flops_per_token + attn_flops_min_est
+    flops_per_token_est = matmul_flops_per_token + (attn_flops_min_est / max_seq_len)
     ### matmul computation time should be linearly proportional to tokens per round (if reached arithmetic intensity)
     ### this is likely an overestimate, and we would be ok with less tokens per round
 
