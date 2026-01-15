@@ -519,7 +519,7 @@ class ActiveModel:
         return
 
           
-    def determine_saved_levels(self, seq_groups, verbose=True):
+    def determine_saved_levels(self, seq_groups, verbose=False):
 
         total_chunks = sum([len(seq_group) for seq_group in seq_groups])
         total_round_tokens = 0
@@ -530,12 +530,15 @@ class ActiveModel:
 
         n_home_act_slots = max(0, total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots)
 
-        if verbose:
-            print(f"Total Chunks: {total_chunks}")
-            print(f"Max Training Chunks: {self.max_training_chunks}")
-            print(f"Total Round Tokens: {total_round_tokens}")
-            print(f"Total GPU Act Slots: {self.n_gpu_act_slots}")
-            print(f"Total Home Act Slots: {n_home_act_slots}")
+        if n_home_act_slots == 0:
+
+            saved_levels = {}
+            for layer_id in self.local_layer_ids:
+                for chunk_id in range(total_chunks):
+                    saved_levels[(layer_id, chunk_id)] = -1
+
+            return saved_levels
+
         ### Use the DP solver to determine saved activtions levels
         ### Each options should be a (duration, size) tuple where
         ### the goal is to maximize size under constraint that finish_trans(chunk_{i}) <= start_compute(chunk_{i + n_gpu_slots})
