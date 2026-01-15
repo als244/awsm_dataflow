@@ -770,25 +770,39 @@ class ActiveModel:
         max_training_chunks = self.max_training_chunks
         
         def estimate_chunks_for_seqs(seqs):
-            """Estimate how many chunks a list of sequences will produce."""
-            total_tokens = sum(len(s) for s in seqs)
+            """Estimate how many chunks a list of sequences will produce,
+            accurately simulating the packing behavior in prepare_training_chunks."""
             
-            # Count chunks from large sequences (they get isolated)
-            large_seq_chunks = 0
-            small_seq_tokens = 0
+            chunk_count = 0
+            current_buffer_size = 0
             
             for s in seqs:
                 s_len = len(s)
+                
                 if s_len > max_chunk_size:
-                    # Large sequences get ceil(s_len / max_chunk_size) dedicated chunks
-                    large_seq_chunks += (s_len + max_chunk_size - 1) // max_chunk_size
+                    # PATH A: Large sequence - flush buffer first, then dedicate chunks
+                    if current_buffer_size > 0:
+                        chunk_count += 1  # Flush creates a chunk
+                        current_buffer_size = 0
+                    
+                    # Large sequence gets ceil(s_len / max_chunk_size) dedicated chunks
+                    chunk_count += (s_len + max_chunk_size - 1) // max_chunk_size
+                    
                 else:
-                    small_seq_tokens += s_len
+                    # PATH B: Small sequence
+                    if current_buffer_size + s_len > max_chunk_size:
+                        # Would overflow - flush first
+                        if current_buffer_size > 0:
+                            chunk_count += 1
+                        current_buffer_size = 0
+                    
+                    current_buffer_size += s_len
             
-            # Small sequences get packed together
-            small_seq_chunks = (small_seq_tokens + max_chunk_size - 1) // max_chunk_size if small_seq_tokens > 0 else 0
+            # Don't forget remaining buffer
+            if current_buffer_size > 0:
+                chunk_count += 1
             
-            return large_seq_chunks + small_seq_chunks
+            return chunk_count
 
         round_seqs = []
         cur_round_seqs = []
