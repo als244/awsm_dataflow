@@ -6,10 +6,13 @@ from awsm_transformer.saved_activations_policy import get_transformer_saved_act_
 import copy
 import math
 
-### this is a factor that impacts chunk size estimation
+### this is critical a factor that impacts chunk size estimation
 ### where > 1 will lean towards bigger matmuls than would be "necessary"
 ### and creates larger chunk
-ARITH_BOUND_FACTOR = 1.25
+
+### during training we want very compute bound to hide latency of other ops
+### so we use a large arith bound factor
+ARITH_BOUND_FACTOR = 20
 
 ### BYtes for all layers in host memory, head/grad + 1 full (master + grad + opt) in GPU memory
 def get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=None, has_embed=True, has_head=True):
@@ -456,7 +459,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     min_act_slot_size_bytes = saved_act_sizes[0]
 
     min_host_act_buffer_size_bytes = host_act_slots * min_act_slot_size_bytes
-    print(f"[Working Set Log] Determined Min Host Act Buffer Size of {min_host_act_buffer_size_bytes / 1e9:.2f}GB")
 
     assert host_act_buffer_size_bytes >= min_host_act_buffer_size_bytes
     
