@@ -319,6 +319,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     target_tokens_per_round = math.ceil(target_layer_flops / flops_per_token_est)
 
+    if fixed_seq_len:
+        target_tokens_per_round = max(max_seq_len, target_tokens_per_round)
+        
     if verbose:
         print(f"[Working Set Log] Baseline Target Tokens Per Round for Sufficient Computation Time: {target_tokens_per_round}")
     
