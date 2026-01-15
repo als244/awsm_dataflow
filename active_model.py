@@ -528,7 +528,7 @@ class ActiveModel:
                 chunk_metadata = chunk["chunk_metadata"]
                 total_round_tokens += chunk_metadata["total_q"]
 
-        self.n_home_act_slots = max(0, total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots)
+        n_home_act_slots = max(0, total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots)
 
         ### Use the DP solver to determine saved activtions levels
         ### Each options should be a (duration, size) tuple where
@@ -735,7 +735,7 @@ class ActiveModel:
             cur_chunk_id = 0
             for seq_group in seq_groups:
                 for chunk in seq_group:
-                    if slot_num < self.n_home_act_slots:
+                    if slot_num < n_home_act_slots:
                         saved_levels[(layer_id, cur_chunk_id)] = key_saved_act_choices[slot_num]
 
                         if saved_levels[(layer_id, cur_chunk_id)] < 0 or saved_levels[(layer_id, cur_chunk_id)] >= num_saved_activation_levels:
