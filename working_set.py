@@ -386,7 +386,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         if chunk_size < init_target_min_chunk_size or (min_chunk_size is not None and chunk_size < min_chunk_size):
             break
 
-        target_num_chunks = math.ceil(target_tokens_per_round / target_chunk_size)
+        target_num_chunks = math.ceil(target_tokens_per_round / chunk_size)
 
         ### this includes transition table, context window, and activation workspace
         baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, target_chunk_size, target_num_chunks, training_config=training_config)
