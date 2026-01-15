@@ -330,11 +330,10 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         print(f"[Working Set Log] Baseline Target Tokens Per Round for Sufficient Computation Time: {target_tokens_per_round}")
     
     agg_act_bytes_per_token = num_local_layers * get_full_act_slot_size_bytes(model_dims, 1)
-    
     full_save_tokens_per_round = math.ceil(remaining_total_mem / (agg_act_bytes_per_token))
 
     if verbose:
-        print(f"[Working Set Log] Based on aggregate available memory to save all activations must use <= {full_save_tokens_per_round}")
+        print(f"[Working Set Log] Based on aggregate available memory to save all activations must use <= {full_save_tokens_per_round} tokens per round")
 
     target_tokens_per_round = min(target_tokens_per_round, full_save_tokens_per_round)
 
@@ -400,7 +399,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
                 if max_seq_len % chunk_size == 0:
                     chunk_size_options.append(chunk_size)
     else:
-        chunk_size_options = init_chunk_size_options
+        chunk_size_options = [d for d in init_chunk_size_options if d >= 256]
     
     cur_remaining_gpu_mem_bytes = remaining_gpu_mem_bytes
 
