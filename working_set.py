@@ -393,7 +393,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     additional_full_compute_layer_size_bytes = get_full_compute_layer_size_bytes(model_dims, target_tokens_per_round, backbone_sizes)
 
     ### this is on top of the 1 full layer we have as part of baseline
-    additional_complete_layers_est = min(num_local_layers - 1, remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes)
+    additional_complete_layers_est = int(min(num_local_layers - 1, remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes))
 
     if verbose:
         print(f"[Working Set Log] Determined # Additional Complete Layers (weights + grad + act slots): {additional_complete_layers_est}")
@@ -422,16 +422,16 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
             leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
         gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
 
-    total_act_slots = target_num_chunks * num_local_layers
+    total_act_slots = int(target_num_chunks * num_local_layers)
 
     gpu_act_slots = min(total_act_slots, gpu_act_workspace_size_bytes // full_act_slot_size_bytes)
     
-    gpu_act_buffer_size = gpu_act_slots * full_act_slot_size
+    gpu_act_buffer_size_bytes = gpu_act_slots * full_act_slot_size_bytes
     
     ## we reuse gpu act buffer during opt step
-    assert gpu_act_buffer_size >= backbone_sizes["opt_bytes"]
+    assert gpu_act_buffer_size_bytes >= backbone_sizes["opt_bytes"]
 
-    n_gpu_opt_layers = gpu_act_buffer_size // backbone_sizes["opt_bytes"]
+    n_gpu_opt_layers = gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"]
     
     est_total_gpu_bytes = baseline_act_gpu_memory + gpu_act_workspace_size_bytes + backbone_sizes["weight_bytes"] * n_gpu_layers + backbone_sizes["grad_bytes"] * n_gpu_grad_layers 
 
@@ -442,23 +442,23 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     host_act_slots = total_act_slots - gpu_act_slots
     
     ### Will not need more than this amount of host memory
-    max_host_act_buffer_size = host_act_slots * full_act_slot_size
+    max_host_act_buffer_size_bytes = host_act_slots * full_act_slot_size_bytes
 
-    host_act_buffer_size = min(max_host_act_buffer_size, remaining_host_mem_bytes)
+    host_act_buffer_size_bytes = min(max_host_act_buffer_size_bytes, remaining_host_mem_bytes)
 
-    est_total_host_bytes = host_act_buffer_size + baseline_host_bytes
+    est_total_host_bytes = host_act_buffer_size_bytes + baseline_host_bytes
 
     saved_act_sizes = get_transformer_saved_act_sizes(model_dims, max_chunk_size)
     min_act_slot_size_bytes = saved_act_sizes[0]
 
-    min_host_act_buffer_size = host_act_slots * min_act_slot_size_bytes
+    min_host_act_buffer_size_bytes = host_act_slots * min_act_slot_size_bytes
 
-    assert host_act_buffer_size >= min_host_act_buffer_size
+    assert host_act_buffer_size_bytes >= min_host_act_buffer_size_bytes
     
     assert est_total_host_bytes <= max_host_mem_bytes
     
     if verbose:
-        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size / 1e9:.2f}GB\n\t# Host Act Buffer Size: {host_act_buffer_size / 1e9:.2f}GB")
+        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / 1e9:.2f}GB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / 1e9:.2f}GB")
         print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / 1e9:.2f}GB, Expected Host Memory Usage: {est_total_host_bytes / 1e9:.2f}GB")
 
     working_set_config = {
@@ -469,8 +469,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         "max_seq_len": max_seq_len,
         "target_round_tokens": target_tokens_per_round,
         "max_total_round_tokens": max_tokens_per_round,
-        "host_act_buffer_size": int(host_act_buffer_size),
-        "gpu_act_buffer_size": int(gpu_act_buffer_size),
+        "host_act_buffer_size": int(host_act_buffer_size_bytes),
+        "gpu_act_buffer_size": int(gpu_act_buffer_size_bytes),
         "max_host_mem_gb": max_host_mem_bytes / 1e9,
         "max_gpu_mem_gb": max_gpu_mem_bytes / 1e9,
     }
