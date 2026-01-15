@@ -313,6 +313,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         "n_gpu_opt_layers": min(num_local_layers, 2),
         "max_chunk_size": max_chunk_size,
         "max_seq_len": max_seq_len,
+        "max_training_chunks": est_num_chunks,
         "target_round_tokens": target_tokens_per_round,
         "max_total_round_tokens": round_to_nearest(max_tokens_per_round, 256),
         "host_act_buffer_size": int(host_act_buffer_size),
