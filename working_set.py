@@ -317,10 +317,12 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     target_layer_flops = min_layer_computation_time * est_tflops * 1e12
 
+    target_tokens_per_round = math.ceil(target_layer_flops / flops_per_token_est)
+
     if verbose:
         print(f"[Working Set Log] Baseline Target Tokens Per Round for Sufficient Computation Time: {target_tokens_per_round}")
     
-    target_tokens_per_round = round_to_nearest(math.ceil(target_layer_flops / flops_per_token_est), 256)
+    target_tokens_per_round = round_to_nearest(target_tokens_per_round, 256)
 
     ### cannot exceed max tokens per round determined by memory constraints
     target_tokens_per_round = min(max_tokens_per_round, target_tokens_per_round)
