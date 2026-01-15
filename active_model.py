@@ -657,7 +657,7 @@ class ActiveModel:
             required_demotion_bytes = np.sum(key_saved_act_chosen_sizes) - self.cpu_act_buffer_size
 
             if verbose:
-                print(f"Wanting to save more activations {np.sum(saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / 1e9:.2f}GB; demoting levels until satisfied...")
+                print(f"Wanting to save more activations {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / 1e9:.2f}GB; demoting levels until satisfied...")
 
             demotion_bytes = 0
 
@@ -668,8 +668,8 @@ class ActiveModel:
 
                 for i in inds:
                     ### update these arrays as same (chunk, layer) could be demoted again
-                    key_saved_act_choices[i] = level_to_demote - 1
                     demotion_bytes += key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, level_to_demote - 1]
+                    key_saved_act_choices[i] = level_to_demote - 1
                     key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, level_to_demote - 1]
                     if demotion_bytes >= required_demotion_bytes:
                         break
@@ -685,8 +685,8 @@ class ActiveModel:
             sorted_attn_only_inds = attn_only_save_inds[np.argsort(attn_only_save_values)]
 
             for i in sorted_attn_only_inds:
-                key_saved_act_choices[i] = 0
                 demotion_bytes += key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, 0]
+                key_saved_act_choices[i] = 0
                 key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, 0]
                 if demotion_bytes >= required_demotion_bytes:
                     break
