@@ -649,7 +649,7 @@ class ActiveModel:
 
             ## check if all minimally saved, then major errrory and we need to reduce tokens per round
             if np.sum(key_saved_act_choices) == 0:
-                raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_tokens_per_round}. Must be below current error of {total_round_tokens} tokens per round") 
+                raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
 
             required_demotion_bytes = np.sum(key_saved_act_chosen_sizes) - self.cpu_act_buffer_size
 
@@ -690,7 +690,7 @@ class ActiveModel:
 
             ## if we reach here then we fully demoted everything and still need more space
             ## so report same error as we started with
-            raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_tokens_per_round}. Must be below current error of {total_round_tokens} tokens per round") 
+            raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
 
     
         ### Now: "key_saved_act_choices" contains the final choices with valid config
