@@ -17,9 +17,9 @@ all_model_dims = json.load(open("model_dims.json"))
 
 SEQ_LEN = 8192
 SEQS_PER_STEP = 72
-MAX_STEPS = 10
+MAX_STEPS = 3
 
-TO_PROFILE_BACKEND = False
+TO_PROFILE_BACKEND = True
 TO_PROFILE_TORCH_MEMORY = False
 TO_SAVE_ERROR = True
 
