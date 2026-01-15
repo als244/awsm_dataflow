@@ -320,7 +320,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         target_tokens_per_round = max(min_tokens_per_round, target_tokens_per_round)
 
     if fixed_seq_len:
-        target_tokens_per_round = round_to_nearest(target_tokens_per_round, max_seq_len)
+        target_tokens_per_round = max(max_seq_len, round_to_nearest(target_tokens_per_round, max_seq_len))
         if target_tokens_per_round > max_tokens_per_round:
             target_tokens_per_round -= max_seq_len
             if target_tokens_per_round > max_tokens_per_round or target_tokens_per_round == 0:
