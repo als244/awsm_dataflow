@@ -360,7 +360,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     if verbose:
         print(f"[Working Set Log] Determined Target Chunk Size Est: {target_chunk_size}")
 
-    target_num_chunks = target_tokens_per_round / target_chunk_size
+    target_num_chunks = math.ceil(target_tokens_per_round / target_chunk_size)
 
     if verbose:
         print(f"[Working Set Log] Determined Target Num Chunks Est: {target_num_chunks}")
@@ -383,6 +383,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ### this is on top of the 1 full layer we have as part of baseline
     additional_complete_layers_est = min(num_local_layers - 1, remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes)
 
+    if verbose:
+        print(f"[Working Set Log] Determined # Additional Complete Layers (weights + grad + act slots): {additional_complete_layers_est}")
+    
     n_gpu_layers = 1 + additional_complete_layers_est
     n_gpu_grad_layers = 1 + additional_complete_layers_est
 
