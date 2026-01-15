@@ -406,11 +406,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     leftover_post_complete_layers_bytes = remaining_gpu_mem_bytes - complete_layers_size_est
 
     ### baseline for act workspace
-    gpu_act_workspace_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, target_tokens_per_round)
+    gpu_act_workspace_size_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, target_tokens_per_round)
     
-    if gpu_act_workspace_bytes < backbone_sizes["opt_bytes"]:
-        gpu_act_workspace_bytes += leftover_post_complete_layers_bytes
-        if gpu_act_workspace_bytes < backbone_sizes["opt_bytes"]:
+    if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
+        gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
+        if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
             raise ValueError("Error: Not enough GPU memory to have act buffer > 1 layer of opt state")
     else:
         ### if we can fit addtional model layer give priority to that, then grad layer then act workspace
@@ -420,11 +420,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         if leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
             n_gpu_grad_layers += 1
             leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
-        gpu_act_workspace_bytes += leftover_post_complete_layers_bytes
+        gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
 
     total_act_slots = target_num_chunks * num_local_layers
 
-    gpu_act_slots = min(total_act_slots, gpu_act_workspace_bytes // full_act_slot_size_bytes)
+    gpu_act_slots = min(total_act_slots, gpu_act_workspace_size_bytes // full_act_slot_size_bytes)
     
     gpu_act_buffer_size = gpu_act_slots * full_act_slot_size
     
@@ -433,7 +433,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     n_gpu_opt_layers = gpu_act_buffer_size // backbone_sizes["opt_bytes"]
     
-    est_total_gpu_bytes = baseline_act_gpu_memory + gpu_act_workspace_bytes + backbone_sizes["weight_bytes"] * n_gpu_layers + backbone_sizes["grad_bytes"] * n_gpu_grad_layers 
+    est_total_gpu_bytes = baseline_act_gpu_memory + gpu_act_workspace_size_bytes + backbone_sizes["weight_bytes"] * n_gpu_layers + backbone_sizes["grad_bytes"] * n_gpu_grad_layers 
 
     assert est_total_gpu_bytes <= max_gpu_mem_bytes
 
