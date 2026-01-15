@@ -516,7 +516,7 @@ class ActiveModel:
         return
 
           
-    def determine_saved_levels(self, seq_groups, verbose=True):
+    def determine_saved_levels(self, seq_groups, verbose=False):
 
         total_chunks = sum([len(seq_group) for seq_group in seq_groups])
         total_round_tokens = 0
