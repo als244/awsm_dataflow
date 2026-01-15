@@ -183,7 +183,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3e9, leeway_host_mem_bytes=10e9, verbose=False, device_id=0, min_tokens_per_round=4096, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3e9, leeway_host_mem_bytes=10e9, verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
@@ -227,7 +227,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     remaining_host_mem_bytes = max_host_mem_bytes - baseline_host_bytes
 
     if verbose:
-        print(f"[Working Set Log] After Baseline Model Memory Requirements, Determined: Remaining GPU Memory of {remaining_gpu_mem_bytes / (1 << 30):,.2f}GB and Remaining Host Memory of {remaining_host_mem_bytes / (1 << 30):,.2f}GB")
+        print(f"[Working Set Log] After Baseline Model Memory Requirements and Accounting for Set Memory Bounds, Determined: Remaining GPU Memory of {remaining_gpu_mem_bytes / (1 << 30):,.2f}GB and Remaining Host Memory of {remaining_host_mem_bytes / (1 << 30):,.2f}GB")
     
 
     ### Now we can fit at least 1 full layer in GPU memory (+ embed/head full training state)
@@ -335,8 +335,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     target_tokens_per_round = min(max_tokens_per_round, target_tokens_per_round)
 
     ### in case we are testing and want to set a minimum threshold
-    if min_tokens_per_round is not None:
-        target_tokens_per_round = max(min_tokens_per_round, target_tokens_per_round)
+    if min_tokens_per_round_limit is not None:
+        target_tokens_per_round = max(min_tokens_per_round_limit, target_tokens_per_round)
+
+    if max_tokens_per_round_limit is not None:
+        target_tokens_per_round = min(max_tokens_per_round_limit, target_tokens_per_round)
 
     if fixed_seq_len:
         target_tokens_per_round = max(max_seq_len, round_to_nearest(target_tokens_per_round, max_seq_len))
