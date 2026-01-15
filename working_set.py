@@ -382,6 +382,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         cur_remaining_gpu_mem_bytes = remaining_gpu_mem_bytes
         
         if max_chunk_size is not None and chunk_size > max_chunk_size:
+            print(f"[Working Set Log] Chunk size {chunk_size} exceeds max chunk size {max_chunk_size}, skipping")
             continue
 
         ### at this point we break and will choose first valid chunk size
@@ -402,8 +403,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
         first_layer_act_slots = min(target_num_chunks, cur_remaining_gpu_mem_bytes // full_act_slot_size_bytes)
 
-        ### setting minimum to 2, even though 1 is possible...
-        if first_layer_act_slots < 2:
+        ### need at least 1 act slot
+        if first_layer_act_slots < 1:
             continue
 
         gpu_act_workspace_size_bytes = first_layer_act_slots * full_act_slot_size_bytes
@@ -444,35 +445,51 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
                 leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
             gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
 
+        total_act_slots = int(target_num_chunks * num_local_layers)
+
+        gpu_act_slots = int(min(total_act_slots, gpu_act_workspace_size_bytes // full_act_slot_size_bytes))
+
         satisfied = True
 
         if verbose:
             print(f"[Working Set Log] Determined Target Chunk Size: {chunk_size}, Target Num Chunks: {target_num_chunks}")
             print(f"[Working Set Log] Determined Complete Compute Layers (weights + grad + act slots): {additional_complete_layers_est + 1}")
 
-        option = {"target_chunk_size": chunk_size, "target_num_chunks": target_num_chunks, "n_gpu_layers": n_gpu_layers, "n_gpu_grad_layers": n_gpu_grad_layers, "gpu_act_workspace_size_bytes": gpu_act_workspace_size_bytes}
+        option = {"target_chunk_size": chunk_size, "target_num_chunks": target_num_chunks, "n_gpu_layers": n_gpu_layers, "n_gpu_grad_layers": n_gpu_grad_layers, "gpu_act_workspace_size_bytes": gpu_act_workspace_size_bytes, "gpu_act_slots": gpu_act_slots, "total_act_slots": total_act_slots}
         valid_options.append(option)
-
-        if best_option is None:
-            best_option = option
 
         if additional_complete_layers_est >= 1:
             best_option = option
             break
 
+        if best_option is None:
+            best_option = option
+
+        if best_option["gpu_act_slots"] == 1 and option["gpu_act_slots"] > 1:
+            best_option = option
+        
+        if best_option["n_gpu_layers"] == 1 and option["n_gpu_layers"] > 1:
+            best_option = option
+
+        if best_option["n_gpu_grad_layers"] == 1 and option["n_gpu_grad_layers"] > 1:
+            best_option = option
+
+       
+
 
     if best_option is None:
         raise ValueError("Error: Not enough GPU memory to fit any valid chunk size large enough to fit at least 1 additional complete layer")
+
+
 
     target_chunk_size = best_option["target_chunk_size"]
     target_num_chunks = best_option["target_num_chunks"]
     n_gpu_layers = best_option["n_gpu_layers"]
     n_gpu_grad_layers = best_option["n_gpu_grad_layers"]
     gpu_act_workspace_size_bytes = best_option["gpu_act_workspace_size_bytes"]
-
-    total_act_slots = int(target_num_chunks * num_local_layers)
-
-    gpu_act_slots = int(min(total_act_slots, gpu_act_workspace_size_bytes // full_act_slot_size_bytes))
+    total_act_slots = best_option["total_act_slots"]
+    gpu_act_slots = best_option["gpu_act_slots"]
+    
     
     gpu_act_buffer_size_bytes = gpu_act_slots * full_act_slot_size_bytes
     
