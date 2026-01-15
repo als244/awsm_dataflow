@@ -448,7 +448,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     est_total_host_bytes = host_act_buffer_size_bytes + baseline_host_bytes
 
-    saved_act_sizes = get_transformer_saved_act_sizes(model_dims, max_chunk_size)
+    saved_act_sizes = get_transformer_saved_act_sizes(model_dims, target_chunk_size)
     min_act_slot_size_bytes = saved_act_sizes[0]
 
     min_host_act_buffer_size_bytes = host_act_slots * min_act_slot_size_bytes
