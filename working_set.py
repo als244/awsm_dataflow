@@ -124,7 +124,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes, static_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3e9, leeway_host_mem_bytes=10e9, verbose=False, device_id=0, min_tokens_per_round=4096):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3e9, leeway_host_mem_bytes=10e9, verbose=False, device_id=0, min_tokens_per_round=4096, fixed_seq_len=None):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
@@ -216,6 +216,14 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         print(f"[Working Set Log] Determined Layer Transfer Time of {layer_transfer_duration_sec * 1e3:.2f} ms, Orig Target Tokens Per Round Est: {target_upper_bound_tokens_per_round}")
 
     cur_tokens_per_round = min(max_global_batch_tokens, target_upper_bound_tokens_per_round)
+
+    if fixed_seq_len is not None:
+        cur_tokens_per_round = round_to_nearest(cur_tokens_per_round, fixed_seq_len)
+        if cur_tokens_per_round > max_tokens_per_round:
+            cur_tokens_per_round -= fixed_seq_len
+            if cur_tokens_per_round > max_tokens_per_round or cur_tokens_per_round == 0:
+                raise ValueError(f"Error: Could not find a valid configuration for fixed seq len {fixed_seq_len}; estimated max tokens per round to be {cur_tokens_per_round}")
+            
     
     ## we reuse gpu act buffer for optimizer state so require enough for 2 layers of this
     min_opt_state_bytes = 2 * backbone_opt_bytes
@@ -249,7 +257,10 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         if not satisfied:
             ### arbitrary; we choose target tokens per round from list of high divisors in utils.py anyways
             ### try for different combination, though only the chunk size should matter here...
-            cur_tokens_per_round -= 1024
+            if fixed_seq_len is not None:
+                cur_tokens_per_round -= fixed_seq_len
+            else:
+                cur_tokens_per_round -= 1024
 
             if cur_tokens_per_round < min_tokens_per_round:
                 raise ValueError(f"Error: Not enough memory to run with min tokens per round of: {min_tokens_per_round}")
