@@ -12,9 +12,11 @@ from transmission_scheduler import TransmissionScheduler
 _cudart = ctypes.CDLL('libcudart.so')
 _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
 
-### maybe 15% or so overhead vs. raw matmul hardware env baseline
-### due to norm overheads, attention efficiency, etc.
-PRACTICAL_EFFICIENCY_FACTOR = 0.85
+### assuming we have good estiamte, dangerous to assume slower 
+### computation time (lower efficency factor) bcause that would
+### cause more activations to be saved and could potentially lead
+### to congestion
+PRACTICAL_EFFICIENCY_FACTOR = 1.0
 
 class ActiveModel:
     def __init__(self, model_name, model_layers, working_set_config, local_config, hardware_env, chunk_metadata_func, embed_layer=None, head_layer=None, to_train=True, local_device="cuda:0", group_config=None):
@@ -1083,11 +1085,21 @@ class ActiveModel:
             with self.compute_stream:
                 self.profiler.range_push("Prepare Training Chunks")
                 seq_groups, chunk_mapping = self.prepare_training_chunks(round_seqs)
+                self.profiler.range_pop()
+                self.profiler.range_push("Determine Saved Levels")
                 saved_levels = self.determine_saved_levels(seq_groups)
+                self.profiler.range_pop()
                 
+
+                ### We need to sync here to not mess up prior round data structures
+                ### (dont want to overwrite any class objects)
+                self.compute_stream.synchronize()
+
+
                 if verbose:
                     print(f"\t\t{len(seq_groups)} Seq Groups\n\t\t{len(chunk_mapping)} Chunks\n", flush=True)           
                 
+                self.profiler.range_push("Prepare Act Slots")
                 self.cpu_cur_act_buffer = self.cpu_act_buffer
                 self.cpu_cur_act_buffer_offset = 0
                 for k, v in saved_levels.items():
@@ -1101,6 +1113,7 @@ class ActiveModel:
                     self.cpu_act_slots[(layer_id, chunk_id)] = act_slot
                     self.cpu_cur_act_buffer_offset += total_bytes
                     self.cpu_cur_act_buffer = self.cpu_act_buffer[self.cpu_cur_act_buffer_offset:]
+                self.profiler.range_pop()
 
                 ## initialize transitions
                 if self.embed_layer is not None:
@@ -1475,21 +1488,28 @@ class ActiveModel:
                 self.profiler.range_pop()
 
             ### for simplicity wait here (cpu thread blocking) after each round
-            self.compute_stream.synchronize()
+            # self.compute_stream.synchronize()
+            ### instead waiting after we prepare the next training chunks...
 
             ## we have computed gradients that we need to accumulate (fetch back)
             self.zero_grad = False
 
             round_num += 1
 
-            ### cleanup to mitigate against fragmentation
-            ## gc.collect() doesnt save much memory and appears to come at perf cost... worth looking into this deeper
-            #gc.collect()
-            torch.cuda.empty_cache()
+            ### could cleanup to mitigate against fragmentation
+            ### however, big performance penalty => causes device wide sync
+            ### and thus waits for all transfers to finish, then performs
+            ### freeing, and then cpu thread becomes unblocked. 
+            ### depending on memory constraints (if super tight) we may
+            ### want to do this. 
+            #torch.cuda.empty_cache()
 
         ## ensure all updated gradients are sent home before returning
         self.compute_stream.synchronize()
         self.outbound_stream.synchronize()
+
+        ### makes sense to clean up here
+        torch.cuda.empty_cache()
         
         
     
