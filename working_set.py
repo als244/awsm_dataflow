@@ -270,9 +270,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
 
     ### set target upper bound for tokens per round based on transfer duration
-    ### (if long seqs in dataset then we can surpass this target)
 
     ### Simple rule to satisfy is fwd computation time per layer >= layer transfer time + grad transfer time
+    ### However if low on host memory too many tokens per round induces excessive recomputation
+    ### so it is a tricky balance...
+    ### Using just layer transfer is a good rule of thumb
 
     ### Retrieve worse-case transfer latency of weights
     layer_transfer_duration_sec = baseline_hardware_env["transfer_report"]["layer_concurrent_transfer_duration_sec"]
@@ -287,7 +289,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         grad_layer_size = backbone_sizes["grad_bytes"]
         grad_transfer_duration_sec = grad_layer_size / (transfer_bandwidth_gb_per_sec * 1e9)
 
-    min_layer_computation_time = layer_transfer_duration_sec + grad_transfer_duration_sec
+    #min_layer_computation_time = layer_transfer_duration_sec + grad_transfer_duration_sec
+    min_layer_computation_time = layer_transfer_duration_sec
 
     est_tflops = baseline_hardware_env["basic_peak_tflops_est"]
     est_mem_bw_gb_per_sec = baseline_hardware_env["basic_peak_mem_bandwidth_gb_per_sec"]
