@@ -668,7 +668,10 @@ class ActiveModel:
 
                 for i in inds:
                     ### update these arrays as same (chunk, layer) could be demoted again
-                    demotion_bytes += key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, level_to_demote - 1]
+                    extra_bytes = key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, level_to_demote - 1]
+                    demotion_bytes += extra_bytes
+                    if verbose:
+                        print(f"Demoting activation slot index {i} from level {level_to_demote} to {level_to_demote - 1} to save {extra_bytes} bytes")
                     key_saved_act_choices[i] = level_to_demote - 1
                     key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, level_to_demote - 1]
                     if demotion_bytes >= required_demotion_bytes:
@@ -685,7 +688,10 @@ class ActiveModel:
             sorted_attn_only_inds = attn_only_save_inds[np.argsort(attn_only_save_values)]
 
             for i in sorted_attn_only_inds:
-                demotion_bytes += key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, 0]
+                extra_bytes = key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, 0]
+                demotion_bytes += extra_bytes
+                if verbose:
+                    print(f"Demoting activation slot index {i} from level 1 to 0 to save {extra_bytes} bytes")
                 key_saved_act_choices[i] = 0
                 key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, 0]
                 if demotion_bytes >= required_demotion_bytes:
