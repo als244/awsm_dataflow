@@ -104,8 +104,8 @@ def get_baseline_model_memory_requirements(model_dims, num_local_layers, trainin
 ### purpose is to determine how many full layers we can fit in GPU memory
 def get_full_compute_layer_size_bytes(model_dims, num_tokens, backbone_sizes):
 
-    weights_bytes = backbone_sizes["weight"]
-    grad_bytes = backbone_sizes["grad"]
+    weights_bytes = backbone_sizes["weight_bytes"]
+    grad_bytes = backbone_sizes["grad_bytes"]
 
     training_state_size_bytes = weights_bytes + grad_bytes
 
@@ -118,8 +118,8 @@ def get_full_compute_layer_size_bytes(model_dims, num_tokens, backbone_sizes):
 
 def get_model_compute_size_bytes(model_dims, backbone_sizes):
 
-    weights_bytes = backbone_sizes["weight"]
-    grad_bytes = backbone_sizes["grad"]
+    weights_bytes = backbone_sizes["weight_bytes"]
+    grad_bytes = backbone_sizes["grad_bytes"]
 
     training_state_size_bytes = weights_bytes + grad_bytes
     
