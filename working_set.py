@@ -371,6 +371,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     
     cur_remaining_gpu_mem_bytes = remaining_gpu_mem_bytes
 
+    best_option = None
     valid_options = []
 
     for chunk_size in chunk_size_options:
