@@ -19,10 +19,10 @@ SEQ_LEN = 8192
 SEQS_PER_STEP = 68
 MAX_STEPS = 3
 
-MAX_HOST_MEM_GB = 80
-MAX_GPU_MEM_GB = 20
+MAX_HOST_MEM_GB = 70
+MAX_GPU_MEM_GB = 30
 
-TO_PROFILE_BACKEND = True
+TO_PROFILE_BACKEND = False
 TO_PROFILE_TORCH_MEMORY = False
 TO_SAVE_ERROR = True
 
@@ -339,7 +339,6 @@ print(f"Cleaning up and destroying model...\n")
 active_model.destroy()
 
 if TO_PROFILE_BACKEND:
-    print("Stopping backend profiling...")
     active_model.stop_profile()
 
 if TO_PROFILE_TORCH_MEMORY:
