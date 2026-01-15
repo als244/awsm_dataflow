@@ -19,8 +19,8 @@ SEQ_LEN = 8192
 SEQS_PER_STEP = 68
 MAX_STEPS = 3
 
-MAX_HOST_MEM_GB = 70
-MAX_GPU_MEM_GB = 30
+MAX_HOST_MEM_GB = None
+MAX_GPU_MEM_GB = None
 
 TO_PROFILE_BACKEND = True
 TO_PROFILE_TORCH_MEMORY = False
@@ -36,7 +36,7 @@ MAX_SEQ_LEN = SEQ_LEN
 USE_MUON = False
 SAVE_FINAL = False
 
-MODEL_CHOICE = "llama3_8B"
+MODEL_CHOICE = "olmoe_7Bx1B"
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
@@ -108,9 +108,15 @@ train_seq_pool = SequencePool(vocab_size=model_dims["vocab_size"], min_seq_len=M
 
 train_seq_pool.add_random_sequences(MAX_STEPS * SEQS_PER_STEP, SEQ_LEN)
 
+if MAX_GPU_MEM_GB is not None:
+    max_gpu_mem_bytes = MAX_GPU_MEM_GB * (1 << 30)
+else:
+    max_gpu_mem_bytes = None
 
-max_gpu_mem_bytes = MAX_GPU_MEM_GB * (1 << 30)
-max_host_mem_bytes = MAX_HOST_MEM_GB * (1 << 30)
+if MAX_HOST_MEM_GB is not None:
+    max_host_mem_bytes = MAX_HOST_MEM_GB * (1 << 30)
+else:
+    max_host_mem_bytes = None
 
 working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, verbose=True, fixed_seq_len=True, min_chunk_size=None, max_gpu_mem_bytes=max_gpu_mem_bytes, max_host_mem_bytes=max_host_mem_bytes)
 
