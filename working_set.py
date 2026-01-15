@@ -312,7 +312,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         attn_factor = 1
         if model_dims["is_causal"]:
             attn_factor = 0.5
-        attn_flops_min_est = attn_factor * max_seq_len * max_seq_len * model_dims["head_dim"] * model_dims["n_heads"] 
+        attn_flops_min_est = attn_factor * 4 * max_seq_len * max_seq_len * model_dims["head_dim"] * model_dims["n_heads"] 
 
     target_layer_flops = min_layer_computation_time * est_tflops * 1e12
 
