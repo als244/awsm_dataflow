@@ -478,7 +478,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     if verbose:
         print("[Working Set Log] Running Hardware Environment Check to Return Estimated Hardware Environment...")
 
-    chosen_hardware_env = get_hardware_env(max_chunk_size, model_dims, device_id=device_id)
+    chosen_hardware_env = get_hardware_env(target_chunk_size, model_dims, device_id=device_id)
 
     return working_set_config, chosen_hardware_env
 
