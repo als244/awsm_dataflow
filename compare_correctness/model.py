@@ -13,7 +13,11 @@ from torch import nn
 import numpy as np
 import time
 import pickle
-from flash_attn import flash_attn_varlen_func
+
+try:
+    from flash_attn_interface import flash_attn_varlen_func
+except:
+    from flash_attn import flash_attn_varlen_func
 
 @dataclass
 class ModelArgs:

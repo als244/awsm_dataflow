@@ -29,15 +29,15 @@ device = torch.device("cuda:0")
 all_model_dims = json.load(open("../model_dims.json"))
 
 
-MODEL_CHOICE = "llama3_8B"
+MODEL_CHOICE = "nanogpt_124M"
 
 model_dims = all_model_dims[MODEL_CHOICE]
 
 
 model_args = ModelArgs(
     vocab_size=model_dims["vocab_size"],
-    n_layers=n_layers,
-    dim=model_dims["embed_dim"],
+    n_layers=model_dims["n_layers"],
+    dim=model_dims["d_model"],
     head_dim=model_dims["head_dim"],
     n_heads=model_dims["n_heads"],
     n_kv_heads=model_dims["n_kv_heads"],
@@ -48,7 +48,7 @@ model = Transformer(model_args).to(device)
 
 INIT_MODEL_PATH = f"../init_models/init_{MODEL_CHOICE}"
 
-TRAIN_SEQ_PATH = f"{INIT_MODEL_PATH}/train_seqs"
+TRAIN_SEQ_PATH = f"../fineweb_ckpts/my_{MODEL_CHOICE}_awsm/train_seqs"
 
 model.load_model_weights(INIT_MODEL_PATH)
 
@@ -76,7 +76,7 @@ optimizer = optim.AdamW(
 
 criterion = torch.nn.CrossEntropyLoss()
 
-NUM_STEPS = 100
+NUM_STEPS = 25920
 
 for step_num in range(1, NUM_STEPS + 1):
     train_seqs.append(pickle.load(open(f"{TRAIN_SEQ_PATH}/step_{step_num}.pkl", "rb")))
@@ -84,9 +84,9 @@ for step_num in range(1, NUM_STEPS + 1):
 
 step_num = 1
 
-SAVE_STEPS = [1, 2, 3, 4, 5, 10, 20, 50, 100]
+SAVE_STEPS = []
 
-SAVE_PATH = "../checkpoints/dense_model"
+SAVE_PATH = "../fineweb_ckpts/baseline_{MODEL_CHOICE}"
 
 MAX_TOKENS_PER_BATCH = 8192
 
