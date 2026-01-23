@@ -21,13 +21,16 @@ MAX_STEPS = None
 TO_SAVE_ERROR = True
 
 DEVICE_ID = 0
-MAX_TOKENS_PER_STEP = 524288
+MAX_TOKENS_PER_STEP = 65536
+MIN_CHUNK_SIZE = None
 MIN_SEQ_LEN = 256
 MAX_SEQ_LEN = 8192
 USE_MUON = False
 SAVE_FINAL = False
 
-MODEL_CHOICE = "nanogpt_124M"
+MODEL_CHOICE = "llama3_8B"
+
+model_dims = all_model_dims[MODEL_CHOICE]
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
@@ -38,8 +41,6 @@ RAND_SEED = 42
 torch.manual_seed(RAND_SEED)
 np.random.seed(RAND_SEED)
 torch.cuda.manual_seed(RAND_SEED)
-
-model_dims = all_model_dims[MODEL_CHOICE]
 
 if USE_MUON:
     opt_choice = "Muon"
@@ -114,7 +115,7 @@ for shard_index in range(1, NUM_SHARDS + 1):
 
 
 
-working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, verbose=True)
+working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, min_chunk_size=MIN_CHUNK_SIZE, verbose=True)
 
 print("-------- Working Set Config --------")
 print(working_set_config)
