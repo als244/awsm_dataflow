@@ -1,4 +1,4 @@
-# train.py (Corrected)
+# train.py (Updated - Dense Model Training)
 
 import torch
 import torch.nn as nn
@@ -14,6 +14,7 @@ import ctypes
 
 import json
 import pickle
+import sys
 
 from model import Transformer, ModelArgs, SeqlensInfo
 
@@ -22,9 +23,9 @@ import sequence
 from model import SAVED_ACT_GRADS
 
 
-n_layers = 16
-
 device = torch.device("cuda:0")
+
+n_layers = 16
 
 model_dims = {
     "vocab_size": 50257,
@@ -47,25 +48,29 @@ model_args = ModelArgs(
 
 model = Transformer(model_args).to(device)
 
-model.load_model_weights("../my_models/init_1B")
+INIT_MODEL_PATH = "../my_models/init_1B"
+
+TRAIN_SEQ_PATH = "../train_seqs"
+
+model.load_model_weights(INIT_MODEL_PATH)
 
 
 train_seqs = []
 
 opt_hyperparams = {
-    "lr": 1e-4,
-    "beta1": 0.9,
-    "beta2": 0.999,
+    "lr": 3e-4,
+    "beta1": 0.95,
+    "beta2": 0.98,
     "eps": 1e-8,
     "weight_decay": 0.0,
     "step_num": 0,
 }
 
 optimizer = optim.AdamW(
-    model.parameters(), # Pass all model parameters to the optimizer
+    model.parameters(),
     lr=opt_hyperparams["lr"],
-    betas=(opt_hyperparams["beta1"], opt_hyperparams["beta2"]), # (beta1, beta2)
-    eps=opt_hyperparams["eps"],           # epsilon
+    betas=(opt_hyperparams["beta1"], opt_hyperparams["beta2"]),
+    eps=opt_hyperparams["eps"],
     weight_decay=opt_hyperparams["weight_decay"]
 )
 
@@ -74,111 +79,110 @@ criterion = torch.nn.CrossEntropyLoss()
 NUM_STEPS = 100
 
 for step_num in range(1, NUM_STEPS + 1):
-    train_seqs.append(pickle.load(open(f"../train_seqs/step_{step_num}.pkl", "rb")))
+    train_seqs.append(pickle.load(open(f"{TRAIN_SEQ_PATH}/step_{step_num}.pkl", "rb")))
 
 
 step_num = 1
 
+SAVE_STEPS = [1, 2, 3, 4, 5, 10, 20, 50, 100]
+
+SAVE_PATH = "../checkpoints/dense_model"
+
+MAX_TOKENS_PER_BATCH = 8192
+
 for step_seqs in train_seqs:
-
-    cur_step_seqlens = []
-    input_tokens = []
-    target_tokens = []
+    
+    # First, build batches that respect the token limit
+    batches = []
+    current_batch = []
+    current_batch_tokens = 0
+    
     for seq in step_seqs:
-        cur_step_seqlens.append(len(seq))
-        input_tokens += [t for t in seq.tokens]
-        target_tokens += [t for t in seq.targets]
-
-    cur_step_seqlens_np = np.array(cur_step_seqlens)
-    
-    input_tokens = torch.tensor(input_tokens, device=device).long()
-    target_tokens = torch.tensor(target_tokens, device=device).long()
-
-    seqlens_info = SeqlensInfo(cur_step_seqlens_np, device)
-
-    output = model(input_tokens, seqlens_info, step_num)
-
-    loss = criterion(output, target_tokens)
-
-    print(f"Step {step_num}: Loss: {loss.item()}", flush=True)
-
-    optimizer.zero_grad()
-    loss.backward()
-
-    # head_grad_proj = model.output.weight.grad
-    # if head_grad_proj is not None:
-    #     print(f"Head grad proj (norm): {head_grad_proj.norm()}", flush=True)
-    
-    # head_attn_norm_grad = model.norm.weight.grad
-    # if head_attn_norm_grad is not None:
-    #     print(f"Head attn norm grad (norm): {head_attn_norm_grad.norm()}", flush=True)
-   
-
-    # final_layer_grad = model.layers[-1].attention_norm.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_attn_norm (norm): {final_layer_grad.norm()}", flush=True)
-
-    # final_layer_grad = model.layers[-1].attention.wq.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_q (norm): {final_layer_grad.norm()}", flush=True)
-
-    # final_layer_grad = model.layers[-1].attention.wk.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_k (norm): {final_layer_grad.norm()}", flush=True)
-
-    # final_layer_grad = model.layers[-1].attention.wv.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_v (norm): {final_layer_grad.norm()}", flush=True)
-    
-    # final_layer_grad = model.layers[-1].attention.wo.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_o (norm): {final_layer_grad.norm()}", flush=True)
-
-    # final_layer_grad = model.layers[-1].ffn_norm.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_ffn_norm (norm): {final_layer_grad.norm()}", flush=True)
-
-    # final_layer_grad = model.layers[-1].feed_forward.w1.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_1 (norm): {final_layer_grad.norm()}", flush=True)
-
-    # final_layer_grad = model.layers[-1].feed_forward.w3.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_3 (norm): {final_layer_grad.norm()}", flush=True)
-
-    # final_layer_grad = model.layers[-1].feed_forward.w2.weight.grad
-    # if final_layer_grad is not None:
-    #     print(f"Final layer g_2 (norm): {final_layer_grad.norm()}", flush=True)
-
-    
-    # for name, tensor in SAVED_ACT_GRADS.items():
-    #     torch.save(tensor, f"saved_act_grads_{name}.pt")
-
-    
-
-    # for layer_id, layer in enumerate(model.layers):
-    #     attention_norm_grad = layer.attention_norm.weight.grad
-    #     if attention_norm_grad is not None:
-    #         print(f"L{layer_id}: g_attn_norm (norm): {attention_norm_grad.norm()}", flush=True)
-    #     else:
-    #         print(f"L{layer_id}: g_attn_norm (norm): None", flush=True)
-
-    # for layer_id, layer in enumerate(model.layers):
-    #     # Access the gradient of the attention_norm weight
-    #     grad = layer.attention_norm.weight.grad
+        seq_len = len(seq)
         
-    #     if grad is not None:
-    #         # Calculate norm (default is L2/Euclidean)
-    #         # .item() converts the 1-element tensor to a standard Python float for cleaner printing
-    #         print(f"L{layer_id}: g_attn_norm (norm): {grad.norm()}", flush=True)
-    #     else:
-    #         print(f"L{layer_id}: g_attn_norm (norm): None", flush=True)
-
-
+        # If adding this sequence would exceed limit, start a new batch
+        if current_batch_tokens + seq_len > MAX_TOKENS_PER_BATCH and current_batch:
+            batches.append(current_batch)
+            current_batch = []
+            current_batch_tokens = 0
+        
+        current_batch.append(seq)
+        current_batch_tokens += seq_len
+    
+    # Don't forget the last batch
+    if current_batch:
+        batches.append(current_batch)
+    
+    num_batches = len(batches)
+    optimizer.zero_grad()
+    
+    total_loss = 0.0
+    total_tokens = 0
+    
+    for batch_idx, batch_seqs in enumerate(batches):
+        cur_batch_seqlens = []
+        input_tokens = []
+        target_tokens = []
+        
+        for seq in batch_seqs:
+            cur_batch_seqlens.append(len(seq))
+            input_tokens += [t for t in seq.tokens]
+            target_tokens += [t for t in seq.targets]
+        
+        batch_num_tokens = len(input_tokens)
+        cur_batch_seqlens_np = np.array(cur_batch_seqlens)
+        
+        input_tokens = torch.tensor(input_tokens, device=device).long()
+        target_tokens = torch.tensor(target_tokens, device=device).long()
+        
+        seqlens_info = SeqlensInfo(cur_batch_seqlens_np, device)
+        
+        output = model(input_tokens, seqlens_info, step_num)
+        
+        loss = criterion(output, target_tokens)
+        
+        # Scale loss by the proportion of tokens in this batch
+        # This ensures proper gradient averaging across the full step
+        total_tokens += batch_num_tokens
+        total_loss += loss.item() * batch_num_tokens
+        
+        # Scale gradients for accumulation
+        scaled_loss = loss / num_batches
+        scaled_loss.backward()
+    
+    # Step the optimizer after all batches are processed
     optimizer.step()
+    
+    avg_loss = total_loss / total_tokens if total_tokens > 0 else 0.0
+    print(f"Step {step_num}: Loss: {avg_loss:.6f} ({num_batches} batches, {total_tokens} tokens)", flush=True)
 
-    if step_num == 100:
-        break
+
+    if step_num in SAVE_STEPS:
+        ## save model weights, gradients, and optimizer state!
+        
+        # 1. Ensure the directory exists
+        os.makedirs(SAVE_PATH, exist_ok=True)
+
+        # 2. Manually collect gradients (state_dict does not save these)
+        grads = {}
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                # Detach and move to CPU to save GPU memory and storage space
+                grads[name] = param.grad.detach().cpu()
+
+        # 3. Create the checkpoint dictionary
+        checkpoint = {
+            "step_num": step_num,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "gradients": grads,
+            "loss": loss.item()
+        }
+
+        # 4. Save to disk
+        save_file = f"{SAVE_PATH}/step_{step_num}.pt"
+        torch.save(checkpoint, save_file)
+        
+        print(f"--> Saved checkpoint, optimizer, and gradients to {save_file}", flush=True)
 
     step_num += 1
-    
