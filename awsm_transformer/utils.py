@@ -292,7 +292,7 @@ def next_high_div(n):
 def prev_high_div(n):
     """Returns the largest high-divisor number <= n"""
     idx = bisect.bisect_right(GOOD_BATCH_SIZES, n)
-    return GOOD_BATCH_SIZES[idx - 1] if idx > 0 else None
+    return GOOD_BATCH_SIZES[idx - 1] if idx > 0 else GOOD_BATCH_SIZES[0]
 
 def nearest_high_div(n):
     """Returns the high-divisor number closest to n"""
