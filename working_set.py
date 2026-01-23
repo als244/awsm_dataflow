@@ -263,6 +263,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ## the smallest limit that still gives good performance
     max_tokens_per_round = int(min(recomp_lim_max_tokens_per_round, gpu_lim_max_tokens_per_round))
 
+    if verbose:
+        print(f"[Working Set Log] Orig max tok per round: {max_tokens_per_round}\n\tMax global batch tokens: {max_global_batch_tokens}")
+
     max_tokens_per_round = min(max_tokens_per_round, max_global_batch_tokens)
 
     if max_tokens_per_round < max_seq_len:
@@ -339,6 +342,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     if verbose:
         print(f"[Working Set Log] Based on aggregate available memory to save all activations must use <= {full_save_tokens_per_round} tokens per round")
+        print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with full save tokens per round: {full_save_tokens_per_round} and max tokens per round: {max_tokens_per_round}")
 
     target_tokens_per_round = min(target_tokens_per_round, full_save_tokens_per_round)
 
@@ -361,8 +365,12 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     else:
         target_tokens_per_round = prev_high_div(target_tokens_per_round)
 
+    
     if min_chunk_size is not None:
         target_tokens_per_round = max(min_chunk_size, target_tokens_per_round)
+
+    if verbose:
+        print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with min chunk size: {min_chunk_size} and max global batch tokens: {max_global_batch_tokens}")
 
     target_tokens_per_round = min(max_global_batch_tokens, target_tokens_per_round)
 
