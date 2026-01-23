@@ -25,16 +25,14 @@ from model import SAVED_ACT_GRADS
 
 device = torch.device("cuda:0")
 
-n_layers = 16
 
-model_dims = {
-    "vocab_size": 50257,
-    "embed_dim": 2048,
-    "n_heads": 16,
-    "n_kv_heads": 4,
-    "head_dim": 128,
-    "expert_dim": 8192
-}
+all_model_dims = json.load(open("../model_dims.json"))
+
+
+MODEL_CHOICE = "llama3_8B"
+
+model_dims = all_model_dims[MODEL_CHOICE]
+
 
 model_args = ModelArgs(
     vocab_size=model_dims["vocab_size"],
@@ -48,15 +46,17 @@ model_args = ModelArgs(
 
 model = Transformer(model_args).to(device)
 
-INIT_MODEL_PATH = "../my_models/init_1B"
+INIT_MODEL_PATH = f"../init_models/init_{MODEL_CHOICE}"
 
-TRAIN_SEQ_PATH = "../train_seqs"
+TRAIN_SEQ_PATH = f"{INIT_MODEL_PATH}/train_seqs"
 
 model.load_model_weights(INIT_MODEL_PATH)
 
 
 train_seqs = []
 
+
+### USING CONSTANT HYPERPARAMS FOR SIMPLICITY
 opt_hyperparams = {
     "lr": 3e-4,
     "beta1": 0.95,

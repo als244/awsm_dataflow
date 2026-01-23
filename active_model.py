@@ -18,6 +18,8 @@ _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
 ### to congestion
 PRACTICAL_EFFICIENCY_FACTOR = 1.0
 
+FORCE_SAVED_ACT_LEVEL = None
+
 class ActiveModel:
     def __init__(self, model_name, model_layers, working_set_config, local_config, hardware_env, chunk_metadata_func, embed_layer=None, head_layer=None, to_train=True, local_device="cuda:0", group_config=None):
         self.model_name = model_name
@@ -122,8 +124,7 @@ class ActiveModel:
 
         self.profiler = nvtx
 
-
-
+        self.is_first = True
 
         ## TODO: Add group config
         self.group_config = group_config
@@ -520,6 +521,10 @@ class ActiveModel:
 
           
     def determine_saved_levels(self, seq_groups, verbose=False):
+        
+        if self.is_first:
+            verbose = True
+            self.is_first = False
 
         total_chunks = sum([len(seq_group) for seq_group in seq_groups])
         total_round_tokens = 0
@@ -746,6 +751,9 @@ class ActiveModel:
                 for chunk in seq_group:
                     if slot_num < n_home_act_slots:
                         saved_levels[(layer_id, cur_chunk_id)] = key_saved_act_choices[slot_num]
+
+                        if FORCE_SAVED_ACT_LEVEL is not None:
+                            saved_levels[(layer_id, cur_chunk_id)] = FORCE_SAVED_ACT_LEVEL
 
                         if saved_levels[(layer_id, cur_chunk_id)] < 0 or saved_levels[(layer_id, cur_chunk_id)] >= num_saved_activation_levels:
                             raise Exception(f"Invalid saved level {saved_levels[(layer_id, cur_chunk_id)]} for layer {layer_id} chunk {cur_chunk_id} (host act slot). Must be in range [0, {num_saved_activation_levels})")
@@ -1567,7 +1575,7 @@ class ActiveModel:
         self.compute_stream.synchronize()
         self.outbound_stream.synchronize()
         
-        ### makes sense to clean up here
+        ### probably makes sense to clean up here
         torch.cuda.empty_cache()
 
         ### completion of fwd_bwd
