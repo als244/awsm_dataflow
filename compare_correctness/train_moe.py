@@ -23,38 +23,36 @@ import sequence
 from model_moe import SAVED_ACT_GRADS
 
 
+
+all_model_dims = json.load(open("../model_dims.json"))
+
+
+MODEL_CHOICE = "olmoe_7Bx1B"
+
+model_dims = all_model_dims[MODEL_CHOICE]
+
 device = torch.device("cuda:0")
 
-model_dims = {
-    "vocab_size": 50432,
-    "true_vocab_size": 50257,
-    "embed_dim": 1536,
-    "n_layers": 24,
-    "n_heads": 12,
-    "n_kv_heads": 4,
-    "head_dim": 128,
-    "expert_dim": 768,
-    "num_experts": 16,
-    "top_k": 4,
-}
 
 model_args = ModelArgs(
     vocab_size=model_dims["vocab_size"],
     n_layers=model_dims["n_layers"],
-    dim=model_dims["embed_dim"],
+    dim=model_dims["d_model"],
     head_dim=model_dims["head_dim"],
     n_heads=model_dims["n_heads"],
     n_kv_heads=model_dims["n_kv_heads"],
     expert_dim=model_dims["expert_dim"],
-    num_experts=model_dims["num_experts"],
+    num_experts=model_dims["num_routed_experts"],
     top_k=model_dims["top_k"],
 )
 
 model = Transformer(model_args).to(device)
 
-INIT_MODEL_PATH = "../my_models/init_check_correct_moe_routerinitfix"
+INIT_MODEL_PATH = f"../init_models/init_{MODEL_CHOICE}"
 
-TRAIN_SEQ_PATH = "../fineweb_ckpts/my_check_correct_moe_noawsm_deep/train_seqs"
+TRAIN_SEQ_MODEL_CHOICE = "nanogpt_124M"
+
+TRAIN_SEQ_PATH = f"../fineweb_ckpts/my_{TRAIN_SEQ_MODEL_CHOICE}_awsm/train_seqs"
 
 model.load_model_weights(INIT_MODEL_PATH)
 
@@ -80,7 +78,7 @@ optimizer = optim.AdamW(
 
 criterion = torch.nn.CrossEntropyLoss()
 
-NUM_STEPS = 10000
+NUM_STEPS = 25920
 
 for step_num in range(1, NUM_STEPS + 1):
     train_seqs.append(pickle.load(open(f"{TRAIN_SEQ_PATH}/step_{step_num}.pkl", "rb")))
@@ -88,9 +86,10 @@ for step_num in range(1, NUM_STEPS + 1):
 
 step_num = 1
 
-SAVE_STEPS = [1, 2, 3, 4, 5, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
+SAVE_STEPS = []
 
-SAVE_PATH = "../fineweb_ckpts/baseline_compare_moe_routerinitfix"
+
+SAVE_PATH = "../fineweb_ckpts/baseline_{MODEL_CHOICE}"
 
 MAX_TOKENS_PER_BATCH = 8192
 
