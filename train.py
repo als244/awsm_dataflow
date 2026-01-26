@@ -63,7 +63,7 @@ model_hyperparams = {
     "position_angles": torch.tensor([500000.0], dtype=torch.float32, device=device),
     "window_size_left": -1,
     "window_size_right": -1,
-    "load_bal_coeff": 0.01
+    "load_bal_coeff": 0
 }
 
 

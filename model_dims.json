@@ -22,7 +22,7 @@
         }
     },
     "llama3_8B": {
-        "vocab_size": 128256,
+        "vocab_size": 50304,
         "n_layers": 32,
         "d_model": 4096,
         "head_dim": 128,

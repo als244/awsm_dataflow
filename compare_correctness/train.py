@@ -29,7 +29,7 @@ device = torch.device("cuda:0")
 all_model_dims = json.load(open("../model_dims.json"))
 
 
-MODEL_CHOICE = "nanogpt_124M"
+MODEL_CHOICE = "llama3_8B"
 
 model_dims = all_model_dims[MODEL_CHOICE]
 
