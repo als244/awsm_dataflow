@@ -624,8 +624,8 @@ class TransformerLayer():
         expert_std = 1 / np.sqrt(self.model_dims["expert_dim"])
 
         # 3. Residual scaling factor
-        #resid_scale = 1 / np.sqrt(2 * self.model_dims["n_layers"])
-        resid_scale = 1.0
+        resid_scale = 1 / np.sqrt(2 * self.model_dims["n_layers"])
+        #resid_scale = 1.0
 
         # 4. Input projections (no residual scaling)
         weights["w_q"].normal_(mean=0.0, std=model_std)
