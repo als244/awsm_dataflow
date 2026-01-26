@@ -142,7 +142,7 @@ class TransformerLayer():
             fwd_act_slot["attn_result"] = base_act_slot["attn_result"][:num_tokens, :]
             fwd_act_slot["softmax_lse"] = base_act_slot["softmax_lse"][:, :num_tokens]
 
-            attn_result, softmax_lse = awsm_attention_fwd(rope_q.view(-1, n_heads, head_dim), fwd_context["k"], fwd_context["v"],
+            attn_result, softmax_lse = awsm_attention_fwd(rope_q.view(-1, n_heads, head_dim), fwd_context["k"][:num_tokens, :], fwd_context["v"][:num_tokens, :],
                                     fwd_act_slot["attn_result"], fwd_act_slot["softmax_lse"], 
                                     chunk_metadata["q_seq_offsets"], chunk_metadata["k_seq_offsets"],
                                     chunk_metadata["q_seq_lens"], chunk_metadata["k_seq_lens"], 

@@ -71,9 +71,7 @@ class TransformerEmbed():
     def init_weights(self, weights, std_factor=1.0):
         ## PyTorch cenvention is .normal_ for embedding
         #weights["w_tok_embeddings"].normal_(mean=0.0, std=1.0)
-
-        embed_std = 1 / np.sqrt(self.model_dims["d_model"])
-        #embed_std = 1.0
+        embed_std = 1.0
         #embed_std = 1 / np.sqrt(self.model_dims["d_model"])
         weights["w_tok_embeddings"].normal_(mean=0.0, std=std_factor * embed_std)
 
