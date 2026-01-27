@@ -1,6 +1,6 @@
 ## Steps:
 
-1. Use Python environment with Flash2 or Flash3 installed
+1. Use Python environment with PyTorch and Flash2 or Flash3 installed
 2. Install helper matmul dispatching and transmission scheduler libraries:
 ```make```
 3. Run the test training script:
