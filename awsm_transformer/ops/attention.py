@@ -26,6 +26,9 @@ try:
 except ModuleNotFoundError:
     FLASH_ATTN_2_AVAILABLE = False
 
+if not FLASH_ATTN_2_AVAILABLE and not FLASH_ATTN_3_AVAILABLE:
+    raise FlashAttentionNotAvailableError("Flash Attention 2 and Flash Attention 3 are not available")
+
 def flash2_attention_fwd(q, k, v, out, softmax_lse, q_seq_offsets, k_seq_offsets, q_seq_lens, k_seq_lens, max_seqlen_q, max_seqlen_k, causal=True, window_size=(-1, -1), 
                             leftpad_k = None, block_table=None,alibi_slopes = None, dropout_p=0.0, softcap = 0.0, deterministic=True):
     ## mu-p uses 1 / d instead of 1 / d^2
