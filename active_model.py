@@ -9,8 +9,14 @@ import gc
 from awsm_transformer import get_transformer_saved_act_sizes
 from transmission_scheduler import TransmissionScheduler
 
+
 _cudart = ctypes.CDLL('libcudart.so')
-_nvtxlib = ctypes.CDLL('libnvToolsExt.so')
+
+try:
+    _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
+except Exception as e:
+    print(f"Error nvtx lib: {e}")
+    _nvtxlib = None
 
 ### assuming we have good estiamte, dangerous to assume slower 
 ### computation time (lower efficency factor) bcause that would
@@ -94,13 +100,14 @@ class ActiveModel:
         self.inbound_stream = torch.cuda.Stream(device=local_device)
         self.outbound_stream = torch.cuda.Stream(device=local_device)
         self.inbound_fwd_context_stream = torch.cuda.Stream(device=local_device)
-        try:
-            _nvtxlib.nvtxNameCuStreamA(self.compute_stream.cuda_stream, b"Compute")
-            _nvtxlib.nvtxNameCuStreamA(self.inbound_stream.cuda_stream, b"Inbound")
-            _nvtxlib.nvtxNameCuStreamA(self.outbound_stream.cuda_stream, b"Outbound")
-            _nvtxlib.nvtxNameCuStreamA(self.inbound_fwd_context_stream.cuda_stream, b"Inbound Fwd Context")
-        except Exception as e:
-            print(f"Error naming CUDA streams: {e}")
+        if _nvtxlib is not None:
+            try:
+                _nvtxlib.nvtxNameCuStreamA(self.compute_stream.cuda_stream, b"Compute")
+                _nvtxlib.nvtxNameCuStreamA(self.inbound_stream.cuda_stream, b"Inbound")
+                _nvtxlib.nvtxNameCuStreamA(self.outbound_stream.cuda_stream, b"Outbound")
+                _nvtxlib.nvtxNameCuStreamA(self.inbound_fwd_context_stream.cuda_stream, b"Inbound Fwd Context")
+            except Exception as e:
+                print(f"Error naming CUDA streams: {e}")
 
         self.weight_inbound_events = {}
         self.grad_weight_inbound_events = {}
