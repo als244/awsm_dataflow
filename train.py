@@ -15,6 +15,9 @@ import time
 
 all_model_dims = json.load(open("model_dims.json"))
 
+MAX_GPU_MEM_GB = None
+MAX_HOST_MEM_GB = None
+
 TO_PROFILE_BACKEND = False
 TO_PROFILE_TORCH_MEMORY = False
 MAX_STEPS = None
@@ -120,10 +123,16 @@ for shard_index in range(1, NUM_SHARDS + 1):
 
 
 
+MAX_GPU_MEM_BYTES = None
+MAX_HOST_MEM_BYTES = None
+
+if MAX_GPU_MEM_GB is not None:
+    MAX_GPU_MEM_BYTES = MAX_GPU_MEM_GB * 1024 * 1024 * 1024
+if MAX_HOST_MEM_GB is not None:
+    MAX_HOST_MEM_BYTES = MAX_HOST_MEM_GB * 1024 * 1024 * 1024
 
 
-
-working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, min_chunk_size=MIN_CHUNK_SIZE, verbose=True)
+working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, min_chunk_size=MIN_CHUNK_SIZE, verbose=True, max_gpu_mem_bytes=MAX_GPU_MEM_BYTES, max_host_mem_bytes=MAX_HOST_MEM_BYTES)
 
 print("-------- Working Set Config --------")
 print(working_set_config)
