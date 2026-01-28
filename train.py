@@ -106,7 +106,7 @@ print(f"Creating sequences", flush=True)
 
 train_seq_pool = SequencePool(vocab_size=model_dims["vocab_size"], min_seq_len=MIN_SEQ_LEN, max_seq_len=MAX_SEQ_LEN)
 
-NUM_SHARDS = 20
+NUM_SHARDS = 1
 
 ### TODO: This should be loaded in background asynchronously...
 ### right now has high fixed cost for init time to create all sequences...
