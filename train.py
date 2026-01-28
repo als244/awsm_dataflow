@@ -66,6 +66,10 @@ model_hyperparams = {
     "load_bal_coeff": 0
 }
 
+print("-------- Model Hyperparams --------")
+print(model_hyperparams)
+print("\n\n\n")
+
 
 TOTAL_TOKENS = 2e9
 est_total_steps = TOTAL_TOKENS / MAX_TOKENS_PER_STEP
@@ -83,6 +87,10 @@ opt_hyperparams = {
     "weight_decay": 0,
     "step_num": 0,
 }
+
+print("-------- Opt Hyperparams --------")
+print(opt_hyperparams)
+print("\n\n\n")
 
 
 
