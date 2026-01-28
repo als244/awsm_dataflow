@@ -237,6 +237,7 @@ class TransformerLayer():
 
         num_tokens = dX.shape[0]
         n_heads = self.model_dims["n_heads"]
+        n_kv_heads = self.model_dims["n_kv_heads"]
         head_dim = self.model_dims["head_dim"]
 
         attn_result = fwd_act_slot["attn_result"].view(num_tokens, -1)
