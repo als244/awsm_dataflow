@@ -782,7 +782,7 @@ class TransformerMoELayer():
         bwd_context["dv"][start_chunk_idx: start_chunk_idx + total_q, :].zero_()
 
         # 4.) rope bwd on dq and local_dk
-        dq, local_dk = awsm_rope_bwd([dq, local_dk], chunk_metadata["seq_positions"], self.model_hyperparams["position_angles"])
+        dq, local_dk = awsm_rope_bwd([dq.view(-1, n_heads, head_dim), local_dk.view(-1, n_kv_heads, head_dim)], chunk_metadata["seq_positions"], self.model_hyperparams["position_angles"])
         
         
         # 3.) backprop through wq, wk, wv and accumulate result into upstream gradient of attn norm
