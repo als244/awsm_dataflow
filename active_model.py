@@ -614,25 +614,45 @@ class ActiveModel:
                         saved_option_transfer_durations[layer_num * total_chunks + chunk_id, saved_level] = (saved_level_bytes / (self.bw_est_gb_per_sec * 1e9)) * 1e3
 
         
+        
+        ## assume last column contains full saved
+        max_optional_recompute_time_avoided = saved_option_values[:, -1].sum()
+        min_required_recompute_time_avoided = total_fwd_time_ms - max_optional_recompute_time_avoided
+
         ### Now we have inputs for solver to determine saved activations levels
         optional_recompute_time_avoided, saved_act_choices = self.transmission_scheduler.solve(compute_times, saved_option_transfer_durations, saved_option_values, self.n_gpu_act_slots) 
         
+
+
         ### Confirm we get a valid schedule, otherwise we have major issues
         if saved_act_choices is None:
 
             if verbose:
-                print("No valid DP schedule found to avoid idle time => Setting all host activations to be minimally saved.")
+                print("No valid DP schedule found to avoid idle time => Setting all host activations to be minimally saved.", flush=True)
 
             ### TODO: probably have default be recomputing everything
             ##raise Exception("No valid schedule found for saved activations, idle time is forced")
             key_saved_act_choices = np.zeros(total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots, dtype=np.int32)
         else:
+            
+            ## should be same as returned value "optional_recompute_time_avoided", but tiny (i.e. 1e-13) numeric differences so returning consisent number based on numpy
+            ## saved_act_choices returns length total_chunks * len(self.local_layer_ids) vector, though last self.n_gpu_act_slots should be value of num_saved_activation_levels - 1
+            t_optional_avoid = saved_option_values[np.arange(saved_option_values.shape[0]), saved_act_choices].sum()
+            total_recompute_time = total_fwd_time_ms - min_required_recompute_time_avoided - t_optional_avoid
+
+            fwd_recompute_frac = total_recompute_time / total_fwd_time_ms
 
             if verbose:
-                print(f"Est Total Forward Time: {total_fwd_time_ms} ms")
-                print(f"Initial Saved Act Choices: {saved_act_choices[:-self.n_gpu_act_slots]}")
-                print(f"Initial Optional Recompute Time Avoided: {optional_recompute_time_avoided} ms")
-                
+                print(f"[DP Solver] Compute times: {compute_times}", flush=True)
+                print(f"[DP Solver] Saved option transfer durations: {saved_option_transfer_durations}", flush=True)
+                print(f"[DP Solver] Saved option values: {saved_option_values}\n", flush=True)
+                print(f"[DP Solution] Initial Saved Act Choices: {saved_act_choices[:-self.n_gpu_act_slots]}\n\n", flush=True)
+                print(f"Est Total Forward Time: {total_fwd_time_ms:.2f} ms", flush=True)
+                print(f"Required Minimally Saved Act Recompute Avoid Time: {min_required_recompute_time_avoided:.2f} ms", flush=True)
+                print(f"Initial Optional Recompute Time Avoided: {t_optional_avoid:.2f} ms / {max_optional_recompute_time_avoided:.2f} ms", flush=True)
+                print(f"Total Recompute Time: {total_recompute_time:.2f} ms", flush=True)
+                print(f"Forward Recompute Frac: {fwd_recompute_frac:.4f}", flush=True)
+
             ### override the last n_gpu_act_slots with saving on device => level -1
             key_saved_act_choices = saved_act_choices[:-self.n_gpu_act_slots]
 
@@ -667,12 +687,13 @@ class ActiveModel:
         ### very long context)
         
         if verbose:
-            print(f"Initial Total Saved Bytes: {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB")
+            print(f"Initial Total Saved Bytes: {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB", flush=True)
         
-        if np.sum(key_saved_act_chosen_sizes) > self.cpu_act_buffer_size:
 
+        if np.sum(key_saved_act_chosen_sizes) > self.cpu_act_buffer_size:
+            
             if verbose:
-                print(f"Not enough host act buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB, so will now demote saved activations")
+                print(f"Not enough host act buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB, so will now demote saved activations", flush=True)
 
             ## check if all minimally saved, then major errrory and we need to reduce tokens per round
             if np.sum(key_saved_act_choices) == 0:
@@ -681,7 +702,7 @@ class ActiveModel:
             required_demotion_bytes = np.sum(key_saved_act_chosen_sizes) - self.cpu_act_buffer_size
 
             if verbose:
-                print(f"Wanting to save more activations {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / 1e9:.2f}GB; demoting levels until satisfied. Need to demote {required_demotion_bytes} bytes")
+                print(f"Wanting to save more activations {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / 1e9:.2f}GB; demoting levels until satisfied. Need to demote {required_demotion_bytes} bytes", flush=True)
 
             demotion_bytes = 0
             satisfied = False
@@ -699,7 +720,7 @@ class ActiveModel:
                     extra_bytes = key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, level_to_demote - 1]
                     demotion_bytes += extra_bytes
                     if verbose:
-                        print(f"Demoting activation slot index {i} from level {level_to_demote} to {level_to_demote - 1} to save {extra_bytes} bytes")
+                        print(f"Demoting activation slot index {i} from level {level_to_demote} to {level_to_demote - 1} to save {extra_bytes} bytes", flush=True)
                     key_saved_act_choices[i] = level_to_demote - 1
                     key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, level_to_demote - 1]
                     if demotion_bytes >= required_demotion_bytes:
@@ -723,7 +744,7 @@ class ActiveModel:
                     extra_bytes = key_saved_act_chosen_sizes[i] - key_saved_option_act_sizes[i, 0]
                     demotion_bytes += extra_bytes
                     if verbose:
-                        print(f"Demoting activation slot index {i} from level 1 to 0 to save {extra_bytes} bytes")
+                        print(f"Demoting activation slot index {i} from level 1 to 0 to save {extra_bytes} bytes", flush=True)
                     key_saved_act_choices[i] = 0
                     key_saved_act_chosen_sizes[i] = key_saved_option_act_sizes[i, 0]
                     if demotion_bytes >= required_demotion_bytes:
@@ -736,19 +757,21 @@ class ActiveModel:
                     raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
 
     
-        ### Now: "key_saved_act_choices" contains the final choices with valid config
-        if verbose:
-            print(f"Final Saved Act Choices (after Host Act Memory Constraints): {key_saved_act_choices}")
+            ### Now: "key_saved_act_choices" contains the final choices with valid config
+            if verbose:
+                print(f"Final Saved Act Choices (after Host Act Memory Constraints): {key_saved_act_choices}", flush=True)
 
         saved_host_bytes = np.sum(key_saved_act_chosen_sizes)
 
         assert saved_host_bytes <= self.cpu_act_buffer_size
         
         if verbose:
-            print(f"Saving a total of {saved_host_bytes / 1e9:.2f}GB of activations in host memory.\nHost Act Save Level Breakdown:")
+            print(f"Saving a total of {saved_host_bytes / 1e9:.2f}GB of activations in host memory.\nHost Act Save Level Breakdown:", flush=True)
             for i in range(num_saved_activation_levels - 1, -1, -1):
                 num_combos = len(np.where(key_saved_act_choices == i)[0])
-                print(f"\tLevel {i}: {num_combos} (layer, chunk) combos")
+                print(f"\tLevel {i}: {num_combos} (layer, chunk) combos", flush=True)
+
+        f_recompute_avoided = 0
 
         slot_num = 0
         saved_levels = {}
@@ -775,8 +798,18 @@ class ActiveModel:
                         #saved_levels[(layer_id, cur_chunk_id)] = 3
                     else:
                         saved_levels[(layer_id, cur_chunk_id)] = -1
+
+
+                    f_recompute_avoided += saved_option_values[layer_id * total_chunks + cur_chunk_id, saved_levels[(layer_id, cur_chunk_id)]]
+
                     slot_num += 1
                     cur_chunk_id += 1
+
+        if verbose:
+            ## if we are forcing certain level for testing, or are host capacity constrained then we altered initial choices
+            true_recompute_time = total_fwd_time_ms - min_required_recompute_time_avoided - f_recompute_avoided
+            true_recompute_frac = true_recompute_time / total_fwd_time_ms
+            print(f"\nFinal Recompute Time: {true_recompute_time:.2f} ms / {total_fwd_time_ms:.2f} ms, Final Recompute Frac: {true_recompute_frac:.4f}\n\n\n", flush=True)
 
         return saved_levels
 

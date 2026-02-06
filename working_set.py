@@ -297,8 +297,12 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         grad_layer_size = backbone_sizes["grad_bytes"]
         grad_transfer_duration_sec = grad_layer_size / (transfer_bandwidth_gb_per_sec * 1e9)
 
-    #min_layer_computation_time = layer_transfer_duration_sec + grad_transfer_duration_sec
-    min_layer_computation_time = layer_transfer_duration_sec
+    min_layer_computation_time = layer_transfer_duration_sec + grad_transfer_duration_sec
+    
+    ## In some cases less tokens per round => larger window size => less recomputation => higher throughput
+    ## this applies to very constrained GPU memory, high ratio of processing speed:interconnect bw, or host memory constrained
+    ## regimes, though difference should be ~ 5-10% different and the above formula is more theoretically grounded
+    #min_layer_computation_time = layer_transfer_duration_sec
 
     est_tflops = baseline_hardware_env["basic_peak_tflops_est"]
     est_mem_bw_gb_per_sec = baseline_hardware_env["basic_peak_mem_bandwidth_gb_per_sec"]
