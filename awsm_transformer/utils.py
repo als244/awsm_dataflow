@@ -315,12 +315,12 @@ def get_opt_flops(model_dims, ns_iters=5, is_muon=False):
     
     n_layers = model_dims["n_layers"]
 
-    model_dim = model_dims["embed_dim"]
+    model_dim = model_dims["d_model"]
     n_heads = model_dims["n_heads"]
     head_dim = model_dims["head_dim"]
     n_kv_heads = model_dims["n_kv_heads"]
     expert_dim = model_dims["expert_dim"]
-    num_experts = model_dims["num_experts"]
+    num_experts = model_dims["num_shared_experts"] + model_dims["num_routed_experts"]
 
     attn_dim = n_heads * head_dim
     ctx_dim = n_kv_heads * head_dim
