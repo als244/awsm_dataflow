@@ -384,28 +384,18 @@ class FlashAttentionHelper:
         head_dim = q.shape[2]
         num_seqs = q_seq_offsets.shape[0] - 1
 
+        ### should probably assert that total_k lines up with sum of k_seq_lens...
+
         flash_dtype = _flash_dtype(q)
         effective_sm_count = sm_count if sm_count is not None else self.sm_count
 
         # Get workspace size and allocate.
-        #
-        # The C workspace-size function (flash3_get_fwd_workspace_size) maps:
-        #   max_chunk_size -> total_q AND max_seqlen_q
-        #   max_seq_len    -> total_k AND max_seqlen_k
-        #
-        # The num_splits heuristic inside the C code computes:
-        #   seqlen_q_packgqa = seqlen_q * (num_q_heads / num_kv_heads)
-        # and uses that to determine how many splits (and thus how much
-        # workspace) are needed.  We must ensure max_chunk_size >= total_q
-        # AND max_seq_len >= max(total_q, total_k) so the workspace query
-        # sees values at least as large as what the actual kernel will use.
-        max_total = max(total_q, total_k)
         ws_bytes = self.get_workspace_size(
             num_q_heads=num_q_heads,
             num_kv_heads=num_kv_heads,
             head_dim=head_dim,
-            max_chunk_size=max_total,
-            max_seq_len=max_total,
+            max_chunk_size=total_q,
+            max_seq_len=max(total_q, total_k),
             max_seqs_in_chunk=num_seqs,
             is_causal=causal,
             is_training=False,
@@ -505,21 +495,13 @@ class FlashAttentionHelper:
         flash_dtype = _flash_dtype(q)
         effective_sm_count = sm_count if sm_count is not None else self.sm_count
 
-        # Get workspace size and allocate.
-        #
-        # Same reasoning as forward: the C workspace-size function maps
-        # max_chunk_size -> total_q/max_seqlen_q and max_seq_len ->
-        # total_k/max_seqlen_k.  The backward workspace (dq_accum,
-        # dk_accum, dv_accum) scales with total_q_padded_rounded and
-        # total_k_padded_rounded, so we need both max_chunk_size and
-        # max_seq_len to be at least max(total_q, total_k).
-        max_total = max(total_q, total_k)
+
         ws_bytes = self.get_workspace_size(
             num_q_heads=num_q_heads,
             num_kv_heads=num_kv_heads,
             head_dim=head_dim,
-            max_chunk_size=max_total,
-            max_seq_len=max_total,
+            max_chunk_size=total_q,
+            max_seq_len=max(total_q, total_k),
             max_seqs_in_chunk=num_seqs,
             is_causal=causal,
             is_training=True,
