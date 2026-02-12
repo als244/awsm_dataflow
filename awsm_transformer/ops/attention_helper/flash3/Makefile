@@ -58,13 +58,10 @@ FLASH_API_OBJ = build/flash_api.o
 WRAPPER_SHARED_LIB = lib/libflash3.so
 
 
-all: create_dirs refresh_objs ${WRAPPER_SHARED_LIB}
+all: create_dirs ${WRAPPER_SHARED_LIB}
 
 create_dirs:
 	mkdir -p lib && mkdir -p build && mkdir -p build/instantiations && mkdir -p build/instantiations/sm80 && mkdir -p build/instantiations/sm90 && mkdir -p build/instantiations/sm100
-
-refresh_objs:
-	find build -name "*.o" -exec touch {} +
 
 ${WRAPPER_SHARED_LIB}: ${BUILD_CU_KERNEL_OBJS} ${FLASH_API_OBJ} 
 	${CXX} ${CXX_FLAGS} -shared ${ALL_INCLUDES} $^ -o $@ ${ALL_LIBS}
