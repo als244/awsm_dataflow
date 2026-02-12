@@ -58,7 +58,8 @@ EXTERNAL_OP_ATTENTION_LIB = libattentionwrapper.so
 lib/${EXTERNAL_OP_ATTENTION_LIB}: build_flash2_lib build_flash3_lib ${EXTERNAL_OP_ATTENTION_LIB_OBJS}
 	${CC} ${CFLAGS} ${EXTERNAL_OP_ATTENTION_LIB_ALL_INCLUDES} -shared ${EXTERNAL_OP_ATTENTION_LIB_OBJS} -o $@ ${EXTERNAL_OP_ATTENTION_LIB_OTHER_LIB_DEPENDS}
 
-
+### We ship .o files built from nvcc with original repo; so avoid build time when downloading
+### however with different CUDA/nvcc/arch versions runtime should report failure and then recompilation of these repos is needed!
 refresh_original_flash2_build_objs:
 	find ${FLASH2_DIR}/build -name "*.o" -exec touch {} +
 
