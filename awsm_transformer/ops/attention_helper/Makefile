@@ -55,16 +55,18 @@ EXTERNAL_OP_ATTENTION_LIB = libattentionwrapper.so
 
 
 ## External Attention Lib
-lib/${EXTERNAL_OP_ATTENTION_LIB}: refresh_original_build_objs build_flash2_lib build_flash3_lib ${EXTERNAL_OP_ATTENTION_LIB_OBJS}
+lib/${EXTERNAL_OP_ATTENTION_LIB}: build_flash2_lib build_flash3_lib ${EXTERNAL_OP_ATTENTION_LIB_OBJS}
 	${CC} ${CFLAGS} ${EXTERNAL_OP_ATTENTION_LIB_ALL_INCLUDES} -shared ${EXTERNAL_OP_ATTENTION_LIB_OBJS} -o $@ ${EXTERNAL_OP_ATTENTION_LIB_OTHER_LIB_DEPENDS}
 
 
-refresh_original_build_objs:
+refresh_original_flash2_build_objs:
 	find ${FLASH2_DIR}/build -name "*.o" -exec touch {} +
+
+refresh_original_flash3_build_objs:
 	find ${FLASH3_DIR}/build -name "*.o" -exec touch {} +
 
 # Retry loops for flash libs because nvcc sometimes has errors...
-build_flash3_lib:
+build_flash3_lib: refresh_original_flash3_build_objs
 	@for i in $$(seq 1 20); do \
         if ${MAKE} -C ${FLASH3_DIR}; then \
             echo "Successfully built flash3 lib."; \
@@ -78,7 +80,7 @@ build_flash3_lib:
         sleep 10; \
     done
 
-build_flash2_lib:
+build_flash2_lib: refresh_original_flash2_build_objs
 	@for i in $$(seq 1 20); do \
         if ${MAKE} -C ${FLASH2_DIR}; then \
             echo "Successfully built flash2 lib."; \
