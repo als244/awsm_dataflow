@@ -1,4 +1,4 @@
-all: create_dirs matmul_dispatch transmission_scheduler 
+all: create_dirs matmul_dispatch attention_helper transmission_scheduler example_dataset 
 
 create_dirs:
 	mkdir -p init_models fineweb_ckpts
@@ -6,5 +6,11 @@ create_dirs:
 matmul_dispatch: 
 	cd awsm_transformer/ops/matmul_helper && pip install -e .
 
+attention_helper: 
+	cd awsm_transformer/ops/attention_helper && pip install -e -v .
+
 transmission_scheduler: 
 	cd transmission_scheduler_pkg && pip install -e .
+
+example_dataset: 
+	pip install tiktoken datasets
