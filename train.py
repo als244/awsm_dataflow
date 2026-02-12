@@ -28,18 +28,21 @@ MAX_TOKENS_PER_STEP = 524288
 MIN_CHUNK_SIZE = None
 MIN_SEQ_LEN = 256
 MAX_SEQ_LEN = 8192
-USE_MUON = False
+USE_MUON = True
 SAVE_FINAL = False
 
 LOSS_THRESHOLD = None
 
 MODEL_CHOICE = "nanogpt_124M"
 
+RUN_NAME = "512k_muon"
+
 model_dims = all_model_dims[MODEL_CHOICE]
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
-SAVE_MODEL_PATH = f"fineweb_ckpts/my_{MODEL_CHOICE}_awsm"
+SAVE_MODEL_PATH = f"fineweb_ckpts/my_{MODEL_CHOICE}_awsm_{RUN_NAME}"
+
 SAVE_CHECKPOINT_FREQ = 0
 
 RAND_SEED = 42
@@ -100,7 +103,7 @@ est_total_steps = TOTAL_TOKENS / MAX_TOKENS_PER_STEP
 
 opt_hyperparams = {
     "lr": 0,
-    "max_lr": 6e-4,
+    "max_lr": 1e-3,
     "warmup_pct": 0.1,
     "cooldown_pct": 0.2,
     "final_lr": 1e-5,
