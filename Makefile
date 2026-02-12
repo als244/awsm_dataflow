@@ -1,7 +1,4 @@
-all: create_dirs matmul_dispatch attention_helper transmission_scheduler example_dataset 
-
-create_dirs:
-	mkdir -p init_models fineweb_ckpts
+all: matmul_dispatch attention_helper transmission_scheduler example_dataset 
 
 matmul_dispatch: 
 	cd awsm_transformer/ops/matmul_helper && pip install -e .

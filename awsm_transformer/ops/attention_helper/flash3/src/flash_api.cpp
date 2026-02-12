@@ -12,7 +12,9 @@
 
 
 #define ROUND_UP_TO_128(x) (((x) + 127) & ~127)
-
+#define MY_MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define MY_MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
+#define MY_CEIL(a, b) ((a + b - 1) / b)
 
 inline int round_up_headdim(int head_size) {
     if (head_size <= 64) { return 64; }
