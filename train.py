@@ -24,14 +24,16 @@ MAX_STEPS = None
 TO_SAVE_ERROR = True
 
 DEVICE_ID = 0
-MAX_TOKENS_PER_STEP = 65536
+MAX_TOKENS_PER_STEP = 524288
 MIN_CHUNK_SIZE = None
 MIN_SEQ_LEN = 256
 MAX_SEQ_LEN = 8192
 USE_MUON = False
 SAVE_FINAL = False
 
-MODEL_CHOICE = "llama3_8B"
+LOSS_THRESHOLD = None
+
+MODEL_CHOICE = "nanogpt_124M"
 
 model_dims = all_model_dims[MODEL_CHOICE]
 
@@ -74,18 +76,37 @@ print(model_hyperparams)
 print("\n\n\n")
 
 
-TOTAL_TOKENS = 2e9
+
+print(f"Creating sequences", flush=True)
+
+TOKENS_PER_SHARD = 100e6
+NUM_SHARDS = 100
+
+train_seq_pool = SequencePool(
+    vocab_size=model_dims["vocab_size"],
+    min_seq_len=MIN_SEQ_LEN,
+    max_seq_len=MAX_SEQ_LEN,
+    shard_path_pattern="fineweb10B/fineweb_train_{shard_index:06d}.bin",
+    num_shards=NUM_SHARDS,
+    min_tokens_threshold=TOKENS_PER_SHARD * 2,
+)
+
+train_seq_pool.prefetch_initial_shards(num_shards=min(2, NUM_SHARDS))
+
+TOTAL_TOKENS = TOKENS_PER_SHARD * NUM_SHARDS
 est_total_steps = TOTAL_TOKENS / MAX_TOKENS_PER_STEP
+
+
 
 opt_hyperparams = {
     "lr": 0,
-    "max_lr": 3e-4,
-    "warmup_pct": 0,
-    "cooldown_pct": 0,
-    "final_lr": 3e-4,
+    "max_lr": 6e-4,
+    "warmup_pct": 0.1,
+    "cooldown_pct": 0.2,
+    "final_lr": 1e-5,
     "est_total_steps": est_total_steps,
-    "beta1": 0.95,
-    "beta2": 0.98,
+    "beta1": 0.9,
+    "beta2": 0.95,
     "eps": 1e-8,
     "weight_decay": 0,
     "step_num": 0,
@@ -102,21 +123,6 @@ print("\n\n\n")
 
 
 
-
-### TODO: this is extremely wasteful for host memory usage, no need to load in billions of tokens/additional metadata created per sequence
-### initially; instead should have background thread that refreshes loading in shards...
-print(f"Creating sequences", flush=True)
-
-train_seq_pool = SequencePool(vocab_size=model_dims["vocab_size"], min_seq_len=MIN_SEQ_LEN, max_seq_len=MAX_SEQ_LEN)
-
-NUM_SHARDS = 1
-
-### TODO: This should be loaded in background asynchronously...
-### right now has high fixed cost for init time to create all sequences...
-for shard_index in range(1, NUM_SHARDS + 1):
-    shard_path = f"fineweb10B/fineweb_train_{shard_index:06d}.bin"
-    num_seqs_loaded = train_seq_pool.load_sequences_from_shard(shard_path,token_dtype=np.uint16, start_id=50256, end_id=50256)
-    print(f"Loaded {num_seqs_loaded} sequences from {shard_path}", flush=True)
 
 
 
@@ -200,8 +206,6 @@ step_stats = {}
 
 loss_smoothed = None
 
-LOSS_THRESHOLD = 3.28
-
 total_tokens = 0
 total_seqs = 0
 total_flops_cost = 0
@@ -226,7 +230,7 @@ if TO_PROFILE_TORCH_MEMORY:
 SAVE_STEPS = []
 
 
-while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
+while LOSS_THRESHOLD is None or loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     opt_hyperparams["step_num"] += 1
     step_num = opt_hyperparams["step_num"]
 
@@ -350,6 +354,7 @@ if SAVE_FINAL:
 torch.cuda.synchronize()
 
 print(f"Cleaning up and destroying model...\n")
+train_seq_pool.stop()
 active_model.destroy()
 
 if TO_PROFILE_BACKEND:
