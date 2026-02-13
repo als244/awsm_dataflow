@@ -61,7 +61,7 @@ def apply_adamw_kernel(
 
 def awsm_adamw_step(params, grads, exp_avgs, exp_avg_sqs, 
                lr=1e-4, beta1=0.9, beta2=0.95, eps=1e-8, 
-               weight_decay=0.001, step=1):
+               weight_decay=0.001, step=1, check_error=False):
     
     if not params.is_cuda:
         raise ValueError("Parameters must be on CUDA")
@@ -78,7 +78,7 @@ def awsm_adamw_step(params, grads, exp_avgs, exp_avg_sqs,
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
 
     ## check if any grads are inf or nan
-    if grads.isnan().any() or grads.isinf().any():
+    if check_error and (grads.isnan().any() or grads.isinf().any()):
         print("Grad is inf or nan")
         return -1
 

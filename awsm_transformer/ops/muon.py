@@ -2,13 +2,13 @@ import torch
 
 def awsm_muon_step(param, grad, momentum, lr=1e-4, beta=0.95, eps=1e-8, 
                    a=3.4445, b=-4.775, c=2.0315, ns_iters=5, weight_decay=0, 
-                   nesterov=True):
+                   nesterov=True, check_error=False):
     """
     AWSM Muon step preserving input datatype.
     """
 
     ## check if any grads are inf or nan
-    if grad.isnan().any() or grad.isinf().any():
+    if check_error and (grad.isnan().any() or grad.isinf().any()):
         print("Grad is inf or nan")
         return -1
     
