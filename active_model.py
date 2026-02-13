@@ -1179,7 +1179,7 @@ class ActiveModel:
             self.grad_weight_inbound_events.clear()
 
             with self.compute_stream:
-                self.profiler.range_push("Fwd+Bwd Round")
+                self.profiler.range_push(f"Round {round_num+1}")
 
             if verbose:
                 print(f"\tRound {round_num+1}/{len(all_round_seqs)}\n\t{len(round_seqs)} Sequences, {sum([len(s) for s in round_seqs])} Tokens", flush=True)
