@@ -505,11 +505,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
         gpu_act_slots = int(min(total_act_slots, gpu_act_workspace_size_bytes // full_act_slot_size_bytes))
 
-        satisfied = True
-
-        if verbose:
-            print(f"[Working Set Log] Determined Target Chunk Size: {chunk_size}, Target Num Chunks: {target_num_chunks}")
-            print(f"[Working Set Log] Determined Complete Compute Layers (weights + grad + act slots): {additional_complete_layers_est + 1}")
+        # if verbose:
+        #     print(f"[Working Set Log] Determined Target Chunk Size: {chunk_size}, Target Num Chunks: {target_num_chunks}")
+        #     print(f"[Working Set Log] Determined Complete Compute Layers (weights + grad + act slots): {additional_complete_layers_est + 1}")
 
         option = {"target_chunk_size": chunk_size, "target_num_chunks": target_num_chunks, "n_gpu_layers": n_gpu_layers, "n_gpu_grad_layers": n_gpu_grad_layers, "gpu_act_workspace_size_bytes": gpu_act_workspace_size_bytes, "gpu_act_slots": gpu_act_slots, "total_act_slots": total_act_slots}
         valid_options.append(option)
@@ -568,9 +566,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ### Will not need more than this amount of host memory
     max_host_act_buffer_size_bytes = host_act_slots * full_act_slot_size_bytes
 
-    print(f"[Working Set Log] Determined Max Host Act Buffer Size: {max_host_act_buffer_size_bytes / (1 << 30):.2f}GB")
-    print(f"[Working Set Log] Determined Remaining Host Mem: {remaining_host_mem_bytes / (1 << 30):.2f}GB")
-
     host_act_buffer_size_bytes = min(max_host_act_buffer_size_bytes, remaining_host_mem_bytes)
 
     est_total_host_bytes = host_act_buffer_size_bytes + baseline_host_bytes
@@ -579,9 +574,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     min_act_slot_size_bytes = saved_act_sizes[0]
 
     min_host_act_buffer_size_bytes = host_act_slots * min_act_slot_size_bytes
-
-    print(f"[Working Set Log] Determined Min Host Act Buffer Size: {min_host_act_buffer_size_bytes / (1 << 30):.2f}GB")
-    print(f"[Working Set Log] Determined Host Act Buffer Size: {host_act_buffer_size_bytes / (1 << 30):.2f}GB")
 
     assert host_act_buffer_size_bytes >= min_host_act_buffer_size_bytes
     
