@@ -567,6 +567,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ### Will not need more than this amount of host memory
     max_host_act_buffer_size_bytes = host_act_slots * full_act_slot_size_bytes
 
+    print(f"[Working Set Log] Determined Max Host Act Buffer Size: {max_host_act_buffer_size_bytes / (1 << 30):.2f}GB")
+    print(f"[Working Set Log] Determined Remaining Host Mem: {remaining_host_mem_bytes / (1 << 30):.2f}GB")
+
     host_act_buffer_size_bytes = min(max_host_act_buffer_size_bytes, remaining_host_mem_bytes)
 
     est_total_host_bytes = host_act_buffer_size_bytes + baseline_host_bytes
