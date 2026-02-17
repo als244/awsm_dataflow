@@ -122,27 +122,6 @@ print(opt_hyperparams)
 print("\n\n\n")
 
 
-dashboard = DashboardLogger(
-    url="http://localhost:8501",
-    run_id=RUN_NAME,
-    run_name=f"{RUN_NAME}",
-    model=MODEL_CHOICE,
-    run_dir=SAVE_MODEL_PATH,
-    config={
-        "model_dims": model_dims,
-        "training_config": training_config,
-        "model_hyperparams": model_hyperparams,
-        "opt_hyperparams": opt_hyperparams,
-        "init_model_path": INIT_MODEL_PATH,
-    }
-)
-
-
-
-
-
-
-
 
 
 
@@ -171,6 +150,26 @@ local_config = {
     "local_rank": 0,
     "local_layer_ids": list(range(model_dims["n_layers"])),
 }
+
+
+dashboard = DashboardLogger(
+    url="http://localhost:8501",
+    run_id=RUN_NAME,
+    run_name=f"{RUN_NAME}",
+    model=MODEL_CHOICE,
+    run_dir=SAVE_MODEL_PATH,
+    config={
+        "model_dims": model_dims,
+        "training_config": training_config,
+        "model_hyperparams": model_hyperparams,
+        "opt_hyperparams": opt_hyperparams,
+        "init_model_path": INIT_MODEL_PATH,
+        "local_config": local_config,
+        "working_set_config": working_set_config,
+        "chosen_hardware_env": chosen_hardware_env,
+    }
+)
+
 
 
 
