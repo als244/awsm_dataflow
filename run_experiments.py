@@ -64,7 +64,7 @@ FIXED_PARAMS = {
 # Runner settings
 # ---------------------------------------------------------------------------
 
-TRAIN_SCRIPT   = "train.py"          # Path to train.py relative to this script
+TRAIN_SCRIPT   = "bench_train.py"          # Path to train.py relative to this script
 PYTHON         = sys.executable      # Use the same Python interpreter
 LOG_BASE_DIR   = "experiment_logs"   # Root directory for all log files
 DRY_RUN        = False               # If True, print commands without running
