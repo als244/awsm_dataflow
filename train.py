@@ -125,8 +125,9 @@ print("\n\n\n")
 dashboard = DashboardLogger(
     url="http://localhost:8501",
     run_id=RUN_NAME,
-    run_name=f"{MODEL_CHOICE} {RUN_NAME}",
+    run_name=f"{RUN_NAME}",
     model=MODEL_CHOICE,
+    run_dir=SAVE_MODEL_PATH,
     config={
         "model_dims": model_dims,
         "training_config": training_config,
