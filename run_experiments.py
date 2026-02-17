@@ -74,14 +74,56 @@ DRY_RUN        = False               # If True, print commands without running
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _fmt_val(val) -> str:
+    """Format a parameter value for use in run names and paths."""
+    if val is None:
+        return "None"
+    return str(val)
+
+
 def params_to_run_name(combo: dict) -> str:
-    """Build a compact run name from a parameter combo dict."""
-    parts = []
-    for key, val in sorted(combo.items()):
-        short_key = key.replace("_", "")           # e.g. seq_len -> seqlen
-        short_val = str(val).replace(".", "p")     # e.g. 40.0 -> 40p0
-        parts.append(f"{short_key}{short_val}")
-    return "_".join(parts)
+    """Build a run name from a parameter combo dict.
+
+    Format: {model_choice}_seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgb_{max_gpu_mem_gb}_maxhostmemgb_{max_host_mem_gb}
+    """
+    model_choice    = _fmt_val(combo.get("model_choice"))
+    seq_len         = _fmt_val(combo.get("seq_len"))
+    seqs_per_step   = _fmt_val(combo.get("seqs_per_step"))
+    max_gpu_mem_gb  = _fmt_val(combo.get("max_gpu_mem_gb"))
+    max_host_mem_gb = _fmt_val(combo.get("max_host_mem_gb"))
+
+    return (
+        f"{model_choice}"
+        f"_seqlen_{seq_len}"
+        f"_seqsperstep_{seqs_per_step}"
+        f"_maxgpumemgb_{max_gpu_mem_gb}"
+        f"_maxhostmemgb_{max_host_mem_gb}"
+    )
+
+
+def params_to_log_path(combo: dict) -> str:
+    """Build the log file path from a parameter combo dict.
+
+    Format: experiment_logs/{model_choice}/seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgb_{max_gpu_mem_gb}_maxhostmemgb_{max_host_mem_gb}.log
+    """
+    model_choice    = _fmt_val(combo.get("model_choice"))
+    seq_len         = _fmt_val(combo.get("seq_len"))
+    seqs_per_step   = _fmt_val(combo.get("seqs_per_step"))
+    max_gpu_mem_gb  = _fmt_val(combo.get("max_gpu_mem_gb"))
+    max_host_mem_gb = _fmt_val(combo.get("max_host_mem_gb"))
+
+    subdir = os.path.join(
+        LOG_BASE_DIR,
+        model_choice,
+    )
+    filename = (
+        f"seqlen_{seq_len}"
+        f"_seqsperstep_{seqs_per_step}"
+        f"_maxgpumemgb_{max_gpu_mem_gb}"
+        f"_maxhostmemgb_{max_host_mem_gb}"
+        f".log"
+    )
+    return os.path.join(subdir, filename)
 
 
 def build_cmd(combo: dict, fixed: dict, run_name: str) -> list[str]:
@@ -130,12 +172,8 @@ def main():
     combos = all_combos(SWEEP_PARAMS, SEQ_CONFIGS)
     total  = len(combos)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_log_dir = os.path.join(LOG_BASE_DIR, f"session_{timestamp}")
-    os.makedirs(session_log_dir, exist_ok=True)
-
     print(f"Experiment sweep: {total} combination(s)")
-    print(f"Logs directory  : {session_log_dir}")
+    print(f"Logs directory  : {LOG_BASE_DIR}/")
     if DRY_RUN:
         print("*** DRY RUN — commands will be printed but not executed ***")
     print()
@@ -145,7 +183,10 @@ def main():
     for idx, combo in enumerate(combos, start=1):
         run_name = params_to_run_name(combo)
         cmd      = build_cmd(combo, FIXED_PARAMS, run_name)
-        log_path = os.path.join(session_log_dir, f"{run_name}.log")
+        log_path = params_to_log_path(combo)
+
+        # Ensure the model-specific subdirectory exists
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
         print(f"[{idx}/{total}] run_name : {run_name}")
         print(f"         command  : {' '.join(cmd)}")
@@ -168,8 +209,24 @@ def main():
                 stderr=subprocess.STDOUT,   # merge stderr into the same file
             )
 
-        status = "OK" if proc.returncode == 0 else f"FAILED (rc={proc.returncode})"
-        print(f"         status   : {status}\n")
+        if proc.returncode != 0:
+            # Re-read the tail of the log to surface the error in the console
+            try:
+                with open(log_path, "r") as f:
+                    log_contents = f.read()
+                # Show last 50 lines to capture the traceback
+                tail_lines = log_contents.strip().splitlines()[-50:]
+                tail = "\n".join(tail_lines)
+            except Exception:
+                tail = "(could not read log file)"
+
+            print(f"         status   : FAILED (rc={proc.returncode})")
+            print(f"         ---- last lines of {log_path} ----")
+            print(tail)
+            print(f"         ---- end of error output ----\n")
+        else:
+            print(f"         status   : OK\n")
+
         results.append((run_name, proc.returncode))
 
     # ---------------------------------------------------------------------------
