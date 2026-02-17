@@ -809,7 +809,7 @@ class ActiveModel:
             ## if we are forcing certain level for testing, or are host capacity constrained then we altered initial choices
             true_recompute_time = total_fwd_time_ms - min_required_recompute_time_avoided - f_recompute_avoided
             true_recompute_frac = true_recompute_time / total_fwd_time_ms
-            print(f"\nFinal Recompute Time: {true_recompute_time:.2f} ms / {total_fwd_time_ms:.2f} ms, Final Recompute Frac: {true_recompute_frac:.4f}\n\n\n", flush=True)
+            print(f"\nFinal Recompute Time: {max(0, true_recompute_time):.2f} ms / {total_fwd_time_ms:.2f} ms, Final Recompute Frac: {max(0, true_recompute_frac):.4f}\n\n\n", flush=True)
 
         return saved_levels
 
