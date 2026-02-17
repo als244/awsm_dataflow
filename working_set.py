@@ -532,6 +532,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     if best_option is None:
         raise ValueError("Error: Not enough GPU memory to fit any valid chunk size large enough to fit at least 1 additional complete layer")
+    
+    if verbose:
+        print(f"[Working Set Log] Selected Best Option: {best_option}")
 
 
 
