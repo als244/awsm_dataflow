@@ -183,7 +183,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=4 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=5 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
