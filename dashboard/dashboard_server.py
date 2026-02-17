@@ -70,15 +70,18 @@ def db_create_run(run_id, name=None, model=None, config=None):
     with db_lock:
         conn = get_db()
         config_json = json.dumps(config) if config else None
+        # First try to insert
         conn.execute(
-            """INSERT INTO runs (run_id, name, model, config) VALUES (?, ?, ?, ?)
-               ON CONFLICT(run_id) DO UPDATE SET
-                   name = COALESCE(excluded.name, runs.name),
-                   model = COALESCE(excluded.model, runs.model),
-                   config = COALESCE(runs.config, excluded.config)
-            """,
+            "INSERT OR IGNORE INTO runs (run_id, name, model, config) VALUES (?, ?, ?, ?)",
             (run_id, name or run_id, model, config_json)
         )
+        # Then update non-NULL fields (never overwrite existing data with NULL)
+        if name:
+            conn.execute("UPDATE runs SET name = ? WHERE run_id = ? AND (name IS NULL OR name = run_id)", (name, run_id))
+        if model:
+            conn.execute("UPDATE runs SET model = ? WHERE run_id = ? AND model IS NULL", (model, run_id))
+        if config_json:
+            conn.execute("UPDATE runs SET config = ? WHERE run_id = ? AND config IS NULL", (config_json, run_id))
         conn.commit()
         conn.close()
 
@@ -347,7 +350,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if p == "/api/runs":
             b = json.loads(self._body())
             rid = b.get("run_id", f"run_{int(time.time())}")
-            self._log_request("POST", "/api/runs", f"run={rid} name={b.get('name')} has_config={b.get('config') is not None}")
+            has_config = b.get("config") is not None
+            config_size = len(json.dumps(b.get("config"))) if has_config else 0
+            self._log_request("POST", "/api/runs", f"run={rid} name={b.get('name')} config={config_size}B")
             db_create_run(rid, b.get("name"), b.get("model"), b.get("config"))
             broadcast_all(json.dumps({"type":"runs_updated","data":db_get_runs()}))
             self._json({"run_id": rid})

@@ -182,22 +182,45 @@ class DashboardLogger:
         """Register this run with the server, including sanitized config."""
         safe_config = _sanitize_config(config) if config else None
         try:
-            data = json.dumps({
+            payload = {
                 "run_id": self.run_id,
                 "name": self.run_name,
                 "model": self.model,
                 "config": safe_config,
-            }).encode("utf-8")
+            }
+            data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
                 f"{self.url}/api/runs",
                 data=data,
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            urllib.request.urlopen(req, timeout=5)
+            resp = urllib.request.urlopen(req, timeout=5)
             self._registered = True
-        except Exception:
-            pass  # Server not up yet, will auto-create on first log
+            config_size = len(json.dumps(safe_config)) if safe_config else 0
+            print(f"[Dashboard] Registered run '{self.run_id}' (config: {config_size} bytes)")
+        except Exception as e:
+            print(f"[Dashboard] WARNING: Failed to register run: {e}")
+            # If config serialization failed, try without config
+            if safe_config is not None:
+                try:
+                    fallback = json.dumps({
+                        "run_id": self.run_id,
+                        "name": self.run_name,
+                        "model": self.model,
+                        "config": None,
+                    }).encode("utf-8")
+                    req2 = urllib.request.Request(
+                        f"{self.url}/api/runs",
+                        data=fallback,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    urllib.request.urlopen(req2, timeout=5)
+                    self._registered = True
+                    print(f"[Dashboard] Registered run without config (config serialization may have failed)")
+                except Exception:
+                    pass
 
     def log(self, step_stats: dict):
         """
