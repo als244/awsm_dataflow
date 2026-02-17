@@ -393,8 +393,8 @@ def main():
     server = ThreadedHTTPServer((args.host, args.port), DashboardHandler)
     print(f"╔═══════════════════════════════════════════════════════╗")
     print(f"║  Training Dashboard                                  ║")
-    print(f"║  http://localhost:{args.port:<38s}║")
-    print(f"║  Database: {args.db:<44s}║")
+    print(f"║  http://localhost:{args.port:<38}║")
+    print(f"║  Database: {args.db:<44}║")
     print(f"╚═══════════════════════════════════════════════════════╝")
     try: server.serve_forever()
     except KeyboardInterrupt:
