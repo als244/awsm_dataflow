@@ -417,7 +417,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     if fixed_seq_len:
         max_seqs_per_round = target_tokens_per_round // max_seq_len
         chunk_size_options = [max_seq_len * i for i in range(max_seqs_per_round, 0, -1)]
-        seq_len_divs = get_divisors(max_seq_len)
+        seq_len_divs = sorted(get_divisors(max_seq_len), reverse=True)
         for seq_len_div in seq_len_divs:
             chunk_size_options.append(seq_len_div)
     else:
