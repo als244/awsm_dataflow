@@ -139,6 +139,10 @@ if MAX_HOST_MEM_GB is not None:
 
 working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, min_chunk_size=MIN_CHUNK_SIZE, verbose=True, max_gpu_mem_bytes=MAX_GPU_MEM_BYTES, max_host_mem_bytes=MAX_HOST_MEM_BYTES)
 
+
+## record this here for dashboard logging
+working_set_config["force_saved_act_level"] = FORCE_SAVED_ACT_LEVEL
+
 print("-------- Working Set Config --------")
 print(working_set_config)
 print("\n\n\n")
@@ -189,7 +193,6 @@ else:
 
 
 chunk_metadata_func = model_layers[0].make_chunk_metadata
-
 
 active_model = ActiveModel(INIT_MODEL_PATH, model_layers, working_set_config, local_config, chosen_hardware_env, chunk_metadata_func, embed_layer=embed_layer, head_layer=head_layer, local_device=local_device, force_saved_act_level=FORCE_SAVED_ACT_LEVEL)
 

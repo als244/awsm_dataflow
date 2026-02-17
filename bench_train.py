@@ -148,6 +148,9 @@ working_set_config, chosen_hardware_env = determine_working_set_config(
     max_host_mem_bytes=max_host_mem_bytes,
 )
 
+## record this here for dashboard logging
+working_set_config["force_saved_act_level"] = FORCE_SAVED_ACT_LEVEL
+
 print("-------- Working Set Config --------")
 print(working_set_config)
 print("\n\n\n")
