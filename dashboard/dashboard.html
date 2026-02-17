@@ -1100,6 +1100,13 @@ logger = DashboardLogger(
                             </div>
                             <div class="chart-area"><canvas id="cSeqLen"></canvas></div>
                         </div>
+                        <div class="card">
+                            <div class="card-head">
+                                <div class="card-title"><span class="cdot cdot-amber"></span>GPU Memory (GB)</div>
+                                <div class="card-badge" id="bMem">—</div>
+                            </div>
+                            <div class="chart-area"><canvas id="cMem"></canvas></div>
+                        </div>
                     </div>
                 </div><!-- end metricsTab -->
 
@@ -1223,6 +1230,15 @@ logger = DashboardLogger(
                 dur: new Chart(document.getElementById('cDur'), mkCfg('rose', 'Seconds')),
                 cum: new Chart(document.getElementById('cCum'), mkCfg('green', 'Millions')),
                 seqLen: new Chart(document.getElementById('cSeqLen'), mkCfg('cyan', 'Tokens/Seq')),
+                mem: new Chart(document.getElementById('cMem'), (() => {
+                    const cfg = mkCfg('amber', 'GB', [{
+                        data: [], borderColor: COLORS.rose.l, backgroundColor: COLORS.rose.f,
+                        borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: true, tension: 0.3, label: 'Reserved'
+                    }]);
+                    cfg.data.datasets[0].label = 'Allocated';
+                    cfg.options.plugins.legend.display = true;
+                    return cfg;
+                })()),
             };
         }
         initCharts();
@@ -1404,6 +1420,11 @@ logger = DashboardLogger(
                     charts.seqLen.data.labels.push(lbl);
                     charts.seqLen.data.datasets[0].data.push(d.step_avg_seq_len);
                 }
+                if (d.max_memory_allocated != null || d.max_memory_reserved != null) {
+                    charts.mem.data.labels.push(lbl);
+                    charts.mem.data.datasets[0].data.push(d.max_memory_allocated != null ? d.max_memory_allocated / 1e9 : null);
+                    charts.mem.data.datasets[1].data.push(d.max_memory_reserved != null ? d.max_memory_reserved / 1e9 : null);
+                }
             }
 
             Object.values(charts).forEach(c => c.update('none'));
@@ -1428,6 +1449,7 @@ logger = DashboardLogger(
             document.getElementById('bDur').textContent = d.step_duration != null ? Number(d.step_duration).toFixed(2) + 's' : '—';
             document.getElementById('bCum').textContent = d.total_tokens != null ? fmt(d.total_tokens, 1) : '—';
             document.getElementById('bSeqLen').textContent = d.step_avg_seq_len != null ? Number(d.step_avg_seq_len).toFixed(1) : '—';
+            document.getElementById('bMem').textContent = d.max_memory_allocated != null ? (d.max_memory_allocated / 1e9).toFixed(2) + ' / ' + (d.max_memory_reserved / 1e9).toFixed(2) : '—';
         }
 
         // ═══════════════════════════════════════════════════════

@@ -345,6 +345,10 @@ while LOSS_THRESHOLD is None or loss_smoothed is None or loss_smoothed > LOSS_TH
     cur_step_stats["total_throughput_tflops"] = (cur_step_stats["total_flops_cost"] / cur_step_stats["total_train_time"]) / 1e12
     cur_step_stats["total_tokens_per_sec"] = cur_step_stats["total_tokens"] / cur_step_stats["total_train_time"]
 
+    cur_step_stats["max_memory_allocated"] = torch.cuda.max_memory_allocated()
+    cur_step_stats["max_memory_reserved"] = torch.cuda.max_memory_reserved()
+    
+
     step_stats[step_num] = cur_step_stats
     dashboard.log(cur_step_stats)
 
