@@ -334,6 +334,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             else: self.send_error(400)
         elif p == "/api/runs":
             self._json(db_get_runs())
+        elif p == "/api/debug":
+            # Debug: show raw DB contents for all runs
+            conn = get_db()
+            rows = conn.execute("SELECT run_id, name, length(config) as config_len, config IS NULL as config_null FROM runs").fetchall()
+            conn.close()
+            self._json([dict(r) for r in rows])
         elif p.startswith("/api/runs/") and p.endswith("/steps"):
             rid = self._run_id_from_path(p)
             self._log_request("GET", f"/api/runs/.../steps", f"run={rid}")
