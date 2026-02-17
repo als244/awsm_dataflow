@@ -168,25 +168,24 @@ class DashboardLogger:
 
         self.run_name = run_name or base_id  # display name uses the clean base, not the timestamped id
         self.model = model
+        self._config = _sanitize_config(config) if config else None
         self._queue = queue.Queue(maxsize=10000)
         self._stop_event = threading.Event()
         self._thread = None
         self._registered = False
 
         if self.enabled:
-            self._register_run(config)
             self._thread = threading.Thread(target=self._worker, daemon=True)
             self._thread.start()
 
-    def _register_run(self, config=None):
-        """Register this run with the server, including sanitized config."""
-        safe_config = _sanitize_config(config) if config else None
+    def _register_run(self):
+        """Register this run with the server. Returns True on success."""
         try:
             payload = {
                 "run_id": self.run_id,
                 "name": self.run_name,
                 "model": self.model,
-                "config": safe_config,
+                "config": self._config,
             }
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
@@ -195,32 +194,13 @@ class DashboardLogger:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            resp = urllib.request.urlopen(req, timeout=5)
+            urllib.request.urlopen(req, timeout=5)
             self._registered = True
-            config_size = len(json.dumps(safe_config)) if safe_config else 0
+            config_size = len(json.dumps(self._config)) if self._config else 0
             print(f"[Dashboard] Registered run '{self.run_id}' (config: {config_size} bytes)")
+            return True
         except Exception as e:
-            print(f"[Dashboard] WARNING: Failed to register run: {e}")
-            # If config serialization failed, try without config
-            if safe_config is not None:
-                try:
-                    fallback = json.dumps({
-                        "run_id": self.run_id,
-                        "name": self.run_name,
-                        "model": self.model,
-                        "config": None,
-                    }).encode("utf-8")
-                    req2 = urllib.request.Request(
-                        f"{self.url}/api/runs",
-                        data=fallback,
-                        headers={"Content-Type": "application/json"},
-                        method="POST",
-                    )
-                    urllib.request.urlopen(req2, timeout=5)
-                    self._registered = True
-                    print(f"[Dashboard] Registered run without config (config serialization may have failed)")
-                except Exception:
-                    pass
+            return False
 
     def log(self, step_stats: dict):
         """
@@ -247,6 +227,14 @@ class DashboardLogger:
             pass
 
     def _worker(self):
+        # Retry registration until it succeeds (server might not be up yet)
+        while not self._registered and not self._stop_event.is_set():
+            if self._register_run():
+                break
+            # Wait before retrying, but still drain the queue
+            self._stop_event.wait(timeout=2.0)
+
+        # Normal batch loop
         while not self._stop_event.is_set():
             time.sleep(self.batch_interval)
             self._flush()

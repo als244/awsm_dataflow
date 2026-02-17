@@ -338,9 +338,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             rid = self._run_id_from_path(p)
             self._log_request("GET", f"/api/runs/.../steps", f"run={rid}")
             self._json(db_get_steps(rid))
-        elif p.startswith("/api/runs/"):
+        elif p.startswith("/api/runs/") and not p.endswith("/steps"):
             rid = self._run_id_from_path(p)
             run = db_get_run(rid)
+            if run:
+                config_len = len(run.get('config') or '') if run.get('config') else 0
+                self._log_request("GET", f"/api/runs/...", f"run={rid} config_in_db={config_len}B")
             self._json(run if run else {"error":"not found"}, 200 if run else 404)
         else:
             self.send_error(404)
