@@ -21,7 +21,7 @@ import base64
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 from datetime import datetime
 
 # ─── Database ─────────────────────────────────────────────────────────────────
@@ -299,6 +299,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_header(h, v)
         self.end_headers()
 
+    def _run_id_from_path(self, path):
+        """Extract and URL-decode the run_id from /api/runs/{run_id}[/...]"""
+        parts = path.split("/")
+        # /api/runs/{run_id} -> parts = ['', 'api', 'runs', '{run_id}']
+        # /api/runs/{run_id}/steps -> parts = ['', 'api', 'runs', '{run_id}', 'steps']
+        if len(parts) >= 4:
+            return unquote(parts[3])
+        return None
+
     def do_GET(self):
         p = urlparse(self.path).path
         if p in ("/", "/dashboard"):
@@ -317,9 +326,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         elif p == "/api/runs":
             self._json(db_get_runs())
         elif p.startswith("/api/runs/") and p.endswith("/steps"):
-            self._json(db_get_steps(p.split("/")[3]))
+            rid = self._run_id_from_path(p)
+            self._log_request("GET", f"/api/runs/.../steps", f"run={rid}")
+            self._json(db_get_steps(rid))
         elif p.startswith("/api/runs/"):
-            run = db_get_run(p.split("/")[3])
+            rid = self._run_id_from_path(p)
+            run = db_get_run(rid)
             self._json(run if run else {"error":"not found"}, 200 if run else 404)
         else:
             self.send_error(404)
@@ -355,7 +367,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             broadcast_all(json.dumps({"type":"runs_updated","data":db_get_runs()}))
             self._json({"status":"ok"})
         elif p.startswith("/api/runs/") and p.endswith("/finish"):
-            db_finish_run(p.split("/")[3])
+            rid = self._run_id_from_path(p)
+            db_finish_run(rid)
             broadcast_all(json.dumps({"type":"runs_updated","data":db_get_runs()}))
             self._json({"status":"ok"})
         else: self.send_error(404)
@@ -363,9 +376,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def do_PUT(self):
         p = urlparse(self.path).path
         if p.startswith("/api/runs/"):
+            rid = self._run_id_from_path(p)
             b = json.loads(self._body())
             if "name" in b:
-                db_rename_run(p.split("/")[3], b["name"])
+                db_rename_run(rid, b["name"])
                 broadcast_all(json.dumps({"type":"runs_updated","data":db_get_runs()}))
             self._json({"status":"ok"})
         else: self.send_error(404)
@@ -373,7 +387,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def do_DELETE(self):
         p = urlparse(self.path).path
         if p.startswith("/api/runs/"):
-            db_delete_run(p.split("/")[3])
+            rid = self._run_id_from_path(p)
+            db_delete_run(rid)
             broadcast_all(json.dumps({"type":"runs_updated","data":db_get_runs()}))
             self._json({"status":"ok"})
         else: self.send_error(404)

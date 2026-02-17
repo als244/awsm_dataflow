@@ -1262,11 +1262,13 @@ logger = DashboardLogger(
             }
 
             empty.style.display = 'none';
-            list.innerHTML = runs.map(r => `
+
+            // Build HTML without inline onclick — use event delegation
+            list.innerHTML = runs.map((r, i) => `
     <div class="run-item ${r.run_id === activeRunId ? 'active' : ''}"
-         onclick="selectRun('${r.run_id}')" data-run="${r.run_id}">
+         data-run-index="${i}">
       <div class="run-item-top">
-        <span class="run-name" title="${r.name || r.run_id}">${r.name || r.run_id}</span>
+        <span class="run-name" title="${(r.name || r.run_id).replace(/"/g, '&quot;')}">${r.name || r.run_id}</span>
         <span class="run-status ${r.status}">${r.status}</span>
       </div>
       <div class="run-meta">
@@ -1275,11 +1277,35 @@ logger = DashboardLogger(
         <span title="Updated">${timeAgo(r.updated_at)}</span>
       </div>
       <div class="run-actions">
-        <button class="run-action-btn" onclick="event.stopPropagation(); openRename('${r.run_id}','${(r.name || '').replace(/'/g, "\\'")}')" title="Rename">✎</button>
-        <button class="run-action-btn danger" onclick="event.stopPropagation(); deleteRun('${r.run_id}')" title="Delete">✕</button>
+        <button class="run-action-btn" data-action="rename" data-run-index="${i}" title="Rename">✎</button>
+        <button class="run-action-btn danger" data-action="delete" data-run-index="${i}" title="Delete">✕</button>
       </div>
     </div>
   `).join('');
+
+            // Event delegation for clicks
+            list.onclick = (e) => {
+                // Find which run-item or action was clicked
+                const actionBtn = e.target.closest('[data-action]');
+                if (actionBtn) {
+                    e.stopPropagation();
+                    const idx = parseInt(actionBtn.dataset.runIndex);
+                    const run = runs[idx];
+                    if (!run) return;
+                    if (actionBtn.dataset.action === 'rename') {
+                        openRename(run.run_id, run.name || '');
+                    } else if (actionBtn.dataset.action === 'delete') {
+                        deleteRun(run.run_id);
+                    }
+                    return;
+                }
+                const item = e.target.closest('.run-item');
+                if (item) {
+                    const idx = parseInt(item.dataset.runIndex);
+                    const run = runs[idx];
+                    if (run) selectRun(run.run_id);
+                }
+            };
         }
 
         // ═══════════════════════════════════════════════════════
@@ -1585,7 +1611,7 @@ logger = DashboardLogger(
 
             // Fetch run metadata (includes config)
             try {
-                const runResp = await fetch(`/api/runs/${runId}`);
+                const runResp = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
                 const runData = await runResp.json();
                 if (runData.config) {
                     try {
@@ -1603,7 +1629,7 @@ logger = DashboardLogger(
             clearCharts();
             activeSteps = [];
             try {
-                const resp = await fetch(`/api/runs/${runId}/steps`);
+                const resp = await fetch(`/api/runs/${encodeURIComponent(runId)}/steps`);
                 const data = await resp.json();
                 activeSteps = data;
                 rebuildCharts();
@@ -1630,7 +1656,7 @@ logger = DashboardLogger(
             if (!renameTarget) return;
             const name = document.getElementById('renameInput').value.trim();
             if (!name) return;
-            await fetch(`/api/runs/${renameTarget}`, {
+            await fetch(`/api/runs/${encodeURIComponent(renameTarget)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name })
@@ -1641,7 +1667,7 @@ logger = DashboardLogger(
 
         async function deleteRun(runId) {
             if (!confirm('Delete this run and all its data?')) return;
-            await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+            await fetch(`/api/runs/${encodeURIComponent(runId)}`, { method: 'DELETE' });
             if (activeRunId === runId) {
                 activeRunId = null;
                 document.getElementById('welcomeView').style.display = '';
@@ -1662,13 +1688,23 @@ logger = DashboardLogger(
         }
 
         // ═══════════════════════════════════════════════════════
-        //  WEBSOCKET
+        //  WEBSOCKET + POLLING FALLBACK
         // ═══════════════════════════════════════════════════════
+        let wsConnected = false;
+        let pollInterval = null;
+
         function connectWS() {
             const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${proto}//${location.host}/ws`);
+            try {
+                ws = new WebSocket(`${proto}//${location.host}/ws`);
+            } catch (e) {
+                startPolling();
+                return;
+            }
 
             ws.onopen = () => {
+                wsConnected = true;
+                stopPolling();
                 document.getElementById('connDot').classList.add('live');
                 document.getElementById('connText').textContent = 'Connected';
                 if (activeRunId) {
@@ -1694,12 +1730,42 @@ logger = DashboardLogger(
             };
 
             ws.onclose = () => {
+                wsConnected = false;
                 document.getElementById('connDot').classList.remove('live');
-                document.getElementById('connText').textContent = 'Reconnecting...';
-                setTimeout(connectWS, 3000);
+                document.getElementById('connText').textContent = 'Polling';
+                startPolling();
+                setTimeout(connectWS, 5000);
             };
 
-            ws.onerror = () => ws.close();
+            ws.onerror = () => { try { ws.close(); } catch (e) { } };
+        }
+
+        function startPolling() {
+            if (pollInterval) return;
+            document.getElementById('connText').textContent = 'Polling';
+            pollInterval = setInterval(async () => {
+                // Refresh run list
+                await loadRuns();
+                // If viewing a run, refresh its steps
+                if (activeRunId) {
+                    try {
+                        const resp = await fetch(`/api/runs/${encodeURIComponent(activeRunId)}/steps`);
+                        const data = await resp.json();
+                        if (data.length > activeSteps.length) {
+                            activeSteps = data;
+                            rebuildCharts();
+                            updateStats();
+                        }
+                    } catch (e) { }
+                }
+            }, 3000);
+        }
+
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
         }
 
         // Enter key in rename modal
