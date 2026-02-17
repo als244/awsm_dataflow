@@ -537,7 +537,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         print(f"[Working Set Log] Selected Best Option: {best_option}")
 
 
-
     target_chunk_size = best_option["target_chunk_size"]
     target_num_chunks = best_option["target_num_chunks"]
     n_gpu_layers = best_option["n_gpu_layers"]
@@ -545,6 +544,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     gpu_act_workspace_size_bytes = best_option["gpu_act_workspace_size_bytes"]
     total_act_slots = best_option["total_act_slots"]
     gpu_act_slots = best_option["gpu_act_slots"]
+
+    full_act_slot_size_bytes = get_full_act_slot_size_bytes(model_dims, target_chunk_size)
     
     
     gpu_act_buffer_size_bytes = gpu_act_workspace_size_bytes
