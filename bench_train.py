@@ -30,6 +30,7 @@ parser.add_argument("--max_tokens_per_round_limit",type=int,   default=None,    
 parser.add_argument("--use_muon",                  type=lambda x: x.lower() != 'false', default=True, help="Use Muon optimizer (default: True, pass --use_muon false to disable)")
 parser.add_argument("--model_choice",              type=str,   default="olmoe_7Bx1B", help="Model choice key from model_dims.json")
 parser.add_argument("--run_name",                  type=str,   default="default_run", help="Run name")
+parser.add_argument("--force_saved_act_level",     type=int,   default=None,          help="Force saved activation level")
 args = parser.parse_args()
 
 SEQ_LEN                    = args.seq_len
@@ -42,6 +43,7 @@ MAX_TOKENS_PER_ROUND_LIMIT = args.max_tokens_per_round_limit
 USE_MUON                   = args.use_muon
 MODEL_CHOICE               = args.model_choice
 RUN_NAME                   = args.run_name
+FORCE_SAVED_ACT_LEVEL      = args.force_saved_act_level
 
 # ---------------------------------------------------------------------------
 # Fixed constants
@@ -205,6 +207,7 @@ active_model = ActiveModel(
     INIT_MODEL_PATH, model_layers, working_set_config, local_config,
     chosen_hardware_env, chunk_metadata_func,
     embed_layer=embed_layer, head_layer=head_layer, local_device=local_device,
+    force_saved_act_level=FORCE_SAVED_ACT_LEVEL,
 )
 
 print(f"Initializing model and saving model to {INIT_MODEL_PATH}", flush=True)

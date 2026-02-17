@@ -24,10 +24,9 @@ except Exception as e:
 ### to congestion
 PRACTICAL_EFFICIENCY_FACTOR = 1.0
 
-FORCE_SAVED_ACT_LEVEL = None
 
 class ActiveModel:
-    def __init__(self, model_name, model_layers, working_set_config, local_config, hardware_env, chunk_metadata_func, embed_layer=None, head_layer=None, to_train=True, local_device="cuda:0", group_config=None):
+    def __init__(self, model_name, model_layers, working_set_config, local_config, hardware_env, chunk_metadata_func, embed_layer=None, head_layer=None, to_train=True, local_device="cuda:0", group_config=None, force_saved_act_level=None):
         self.model_name = model_name
         self.working_set_config = working_set_config
         self.to_train = to_train
@@ -70,6 +69,8 @@ class ActiveModel:
         self.local_rank = local_config["local_rank"]
         self.local_layer_ids = local_config["local_layer_ids"]
         self.local_layers = [model_layers[k] for k in self.local_layer_ids]
+
+        self.force_saved_act_level = force_saved_act_level
         
 
         self.n_gpu_model_layers = working_set_config["n_gpu_layers"]
@@ -782,8 +783,8 @@ class ActiveModel:
                     if slot_num < n_home_act_slots:
                         saved_levels[(layer_id, cur_chunk_id)] = key_saved_act_choices[slot_num]
 
-                        if FORCE_SAVED_ACT_LEVEL is not None:
-                            saved_levels[(layer_id, cur_chunk_id)] = FORCE_SAVED_ACT_LEVEL
+                        if self.force_saved_act_level is not None:
+                            saved_levels[(layer_id, cur_chunk_id)] = self.force_saved_act_level
 
                         if saved_levels[(layer_id, cur_chunk_id)] < 0 or saved_levels[(layer_id, cur_chunk_id)] >= num_saved_activation_levels:
                             raise Exception(f"Invalid saved level {saved_levels[(layer_id, cur_chunk_id)]} for layer {layer_id} chunk {cur_chunk_id} (host act slot). Must be in range [0, {num_saved_activation_levels})")

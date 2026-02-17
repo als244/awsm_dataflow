@@ -64,7 +64,7 @@ FIXED_PARAMS = {
 # Runner settings
 # ---------------------------------------------------------------------------
 
-TRAIN_SCRIPT   = "bench_train.py"          # Path to train.py relative to this script
+TRAIN_SCRIPT   = "train.py"          # Path to train.py relative to this script
 PYTHON         = sys.executable      # Use the same Python interpreter
 LOG_BASE_DIR   = "experiment_logs"   # Root directory for all log files
 DRY_RUN        = False               # If True, print commands without running
@@ -84,13 +84,14 @@ def _fmt_val(val) -> str:
 def params_to_run_name(combo: dict) -> str:
     """Build a run name from a parameter combo dict.
 
-    Format: {model_choice}_seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgb_{max_gpu_mem_gb}_maxhostmemgb_{max_host_mem_gb}
+    Format: {model_choice}_seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgb_{max_gpu_mem_gb}_maxhostmemgb_{max_host_mem_gb}_forcesavedactlevel_{force_saved_act_level}
     """
-    model_choice    = _fmt_val(combo.get("model_choice"))
-    seq_len         = _fmt_val(combo.get("seq_len"))
-    seqs_per_step   = _fmt_val(combo.get("seqs_per_step"))
-    max_gpu_mem_gb  = _fmt_val(combo.get("max_gpu_mem_gb"))
-    max_host_mem_gb = _fmt_val(combo.get("max_host_mem_gb"))
+    model_choice          = _fmt_val(combo.get("model_choice"))
+    seq_len               = _fmt_val(combo.get("seq_len"))
+    seqs_per_step         = _fmt_val(combo.get("seqs_per_step"))
+    max_gpu_mem_gb        = _fmt_val(combo.get("max_gpu_mem_gb"))
+    max_host_mem_gb       = _fmt_val(combo.get("max_host_mem_gb"))
+    force_saved_act_level = _fmt_val(combo.get("force_saved_act_level"))
 
     return (
         f"{model_choice}"
@@ -98,19 +99,21 @@ def params_to_run_name(combo: dict) -> str:
         f"_seqsperstep_{seqs_per_step}"
         f"_maxgpumemgb_{max_gpu_mem_gb}"
         f"_maxhostmemgb_{max_host_mem_gb}"
+        f"_forcesavedactlevel_{force_saved_act_level}"
     )
 
 
 def params_to_log_path(combo: dict) -> str:
     """Build the log file path from a parameter combo dict.
 
-    Format: experiment_logs/{model_choice}/seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgb_{max_gpu_mem_gb}_maxhostmemgb_{max_host_mem_gb}.log
+    Format: experiment_logs/{model_choice}/seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgb_{max_gpu_mem_gb}_maxhostmemgb_{max_host_mem_gb}_forcesavedactlevel_{force_saved_act_level}.log
     """
-    model_choice    = _fmt_val(combo.get("model_choice"))
-    seq_len         = _fmt_val(combo.get("seq_len"))
-    seqs_per_step   = _fmt_val(combo.get("seqs_per_step"))
-    max_gpu_mem_gb  = _fmt_val(combo.get("max_gpu_mem_gb"))
-    max_host_mem_gb = _fmt_val(combo.get("max_host_mem_gb"))
+    model_choice          = _fmt_val(combo.get("model_choice"))
+    seq_len               = _fmt_val(combo.get("seq_len"))
+    seqs_per_step         = _fmt_val(combo.get("seqs_per_step"))
+    max_gpu_mem_gb        = _fmt_val(combo.get("max_gpu_mem_gb"))
+    max_host_mem_gb       = _fmt_val(combo.get("max_host_mem_gb"))
+    force_saved_act_level = _fmt_val(combo.get("force_saved_act_level"))
 
     subdir = os.path.join(
         LOG_BASE_DIR,
@@ -121,6 +124,7 @@ def params_to_log_path(combo: dict) -> str:
         f"_seqsperstep_{seqs_per_step}"
         f"_maxgpumemgb_{max_gpu_mem_gb}"
         f"_maxhostmemgb_{max_host_mem_gb}"
+        f"_forcesavedactlevel_{force_saved_act_level}"
         f".log"
     )
     return os.path.join(subdir, filename)

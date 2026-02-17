@@ -19,6 +19,8 @@ all_model_dims = json.load(open("model_dims.json"))
 MAX_GPU_MEM_GB = None
 MAX_HOST_MEM_GB = None
 
+FORCE_SAVED_ACT_LEVEL = None
+
 TO_PROFILE_BACKEND = False
 TO_PROFILE_TORCH_MEMORY = False
 MAX_STEPS = None
@@ -189,7 +191,7 @@ else:
 chunk_metadata_func = model_layers[0].make_chunk_metadata
 
 
-active_model = ActiveModel(INIT_MODEL_PATH, model_layers, working_set_config, local_config, chosen_hardware_env, chunk_metadata_func, embed_layer=embed_layer, head_layer=head_layer, local_device=local_device)
+active_model = ActiveModel(INIT_MODEL_PATH, model_layers, working_set_config, local_config, chosen_hardware_env, chunk_metadata_func, embed_layer=embed_layer, head_layer=head_layer, local_device=local_device, force_saved_act_level=FORCE_SAVED_ACT_LEVEL)
 
 print(f"Initializing model and saving model to {INIT_MODEL_PATH}", flush=True)
 
