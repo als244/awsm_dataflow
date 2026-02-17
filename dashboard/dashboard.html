@@ -1093,6 +1093,13 @@ logger = DashboardLogger(
                             </div>
                             <div class="chart-area"><canvas id="cCum"></canvas></div>
                         </div>
+                        <div class="card">
+                            <div class="card-head">
+                                <div class="card-title"><span class="cdot cdot-cyan"></span>Avg Seq Length</div>
+                                <div class="card-badge" id="bSeqLen">—</div>
+                            </div>
+                            <div class="chart-area"><canvas id="cSeqLen"></canvas></div>
+                        </div>
                     </div>
                 </div><!-- end metricsTab -->
 
@@ -1215,6 +1222,7 @@ logger = DashboardLogger(
                 tok: new Chart(document.getElementById('cTok'), mkCfg('violet', 'Tokens')),
                 dur: new Chart(document.getElementById('cDur'), mkCfg('rose', 'Seconds')),
                 cum: new Chart(document.getElementById('cCum'), mkCfg('green', 'Millions')),
+                seqLen: new Chart(document.getElementById('cSeqLen'), mkCfg('cyan', 'Tokens/Seq')),
             };
         }
         initCharts();
@@ -1392,6 +1400,10 @@ logger = DashboardLogger(
                     charts.cum.data.labels.push(lbl);
                     charts.cum.data.datasets[0].data.push(d.total_tokens / 1e6);
                 }
+                if (d.step_avg_seq_len != null) {
+                    charts.seqLen.data.labels.push(lbl);
+                    charts.seqLen.data.datasets[0].data.push(d.step_avg_seq_len);
+                }
             }
 
             Object.values(charts).forEach(c => c.update('none'));
@@ -1415,6 +1427,7 @@ logger = DashboardLogger(
             document.getElementById('bTok').textContent = d.step_tokens != null ? fmt(d.step_tokens, 0) : '—';
             document.getElementById('bDur').textContent = d.step_duration != null ? Number(d.step_duration).toFixed(2) + 's' : '—';
             document.getElementById('bCum').textContent = d.total_tokens != null ? fmt(d.total_tokens, 1) : '—';
+            document.getElementById('bSeqLen').textContent = d.step_avg_seq_len != null ? Number(d.step_avg_seq_len).toFixed(1) : '—';
         }
 
         // ═══════════════════════════════════════════════════════
