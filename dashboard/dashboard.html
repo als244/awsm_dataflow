@@ -1594,48 +1594,58 @@ logger = DashboardLogger(
         //  RUN SELECTION
         // ═══════════════════════════════════════════════════════
         async function selectRun(runId) {
-            activeRunId = runId;
-            activeRunConfig = null;
-            renderRunList();
-
-            // Reset to metrics tab
-            switchTab('metrics');
-
-            document.getElementById('welcomeView').style.display = 'none';
-            document.getElementById('runView').style.display = '';
-
-            // Subscribe via WS
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'subscribe', run_id: runId }));
-            }
-
-            // Fetch run metadata (includes config)
             try {
-                const runResp = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
-                const runData = await runResp.json();
-                if (runData.config) {
-                    try {
-                        activeRunConfig = typeof runData.config === 'string'
-                            ? JSON.parse(runData.config) : runData.config;
-                    } catch (e) {
-                        activeRunConfig = null;
-                    }
+                activeRunId = runId;
+                activeRunConfig = null;
+
+                // FIRST: switch the view immediately so user sees something
+                document.getElementById('welcomeView').style.display = 'none';
+                document.getElementById('runView').style.display = '';
+
+                // Reset to metrics tab
+                switchTab('metrics');
+                renderRunList();
+
+                // Subscribe via WS
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'subscribe', run_id: runId }));
                 }
-            } catch (e) {
-                console.error('Failed to load run config:', e);
-            }
 
-            // Fetch steps
-            clearCharts();
-            activeSteps = [];
-            try {
-                const resp = await fetch(`/api/runs/${encodeURIComponent(runId)}/steps`);
-                const data = await resp.json();
-                activeSteps = data;
-                rebuildCharts();
-                updateStats();
-            } catch (e) {
-                console.error('Failed to load steps:', e);
+                // Fetch run metadata (includes config)
+                try {
+                    const runResp = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
+                    const runData = await runResp.json();
+                    if (runData.config) {
+                        try {
+                            activeRunConfig = typeof runData.config === 'string'
+                                ? JSON.parse(runData.config) : runData.config;
+                        } catch (e) {
+                            activeRunConfig = null;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load run config:', e);
+                }
+
+                // Fetch steps
+                clearCharts();
+                activeSteps = [];
+                try {
+                    const resp = await fetch(`/api/runs/${encodeURIComponent(runId)}/steps`);
+                    const data = await resp.json();
+                    activeSteps = data;
+                    rebuildCharts();
+                    updateStats();
+                } catch (e) {
+                    console.error('Failed to load steps:', e);
+                }
+            } catch (err) {
+                console.error('selectRun error:', err);
+                // Show error visually
+                document.getElementById('welcomeView').style.display = 'none';
+                document.getElementById('runView').style.display = '';
+                document.getElementById('sStep').textContent = 'ERR';
+                document.getElementById('sLoss').textContent = String(err).substring(0, 30);
             }
         }
 
