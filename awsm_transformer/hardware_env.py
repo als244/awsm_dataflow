@@ -228,6 +228,8 @@ def get_transformer_matmul_report(chunk_size, model_dims, device_id=0, n_reps=10
     if num_routed_experts > 0:
         del X_avg_exp_input, X_avg_exp_act
 
+    torch.cuda.empty_cache()
+
     return matmul_report
 
 def get_basic_peak_flops_est(n=8192, dtype=torch.bfloat16, device="cuda:0"):
@@ -240,6 +242,8 @@ def get_basic_peak_flops_est(n=8192, dtype=torch.bfloat16, device="cuda:0"):
     torch.cuda.synchronize()
 
     del X, W
+
+    torch.cuda.empty_cache()
 
     return matmul_throughput_flops_per_sec
 
@@ -257,6 +261,8 @@ def get_basic_peak_mem_bandwidth_gb_per_sec(n=16384, dtype=torch.bfloat16, devic
     bytes_touched = dtype.itemsize * (n * n + 2 * n)
 
     est_peak_mem_bandwidth_gb_per_sec = bytes_touched / matmul_duration_sec / 1e9 
+
+    torch.cuda.empty_cache()
 
     return est_peak_mem_bandwidth_gb_per_sec
     
