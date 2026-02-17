@@ -65,7 +65,7 @@ FIXED_PARAMS = {
 # Runner settings
 # ---------------------------------------------------------------------------
 
-TRAIN_SCRIPT   = "bench_train.py"          # Path to train.py relative to this script
+TRAIN_SCRIPT   = "train.py"          # Path to train.py relative to this script
 PYTHON         = sys.executable      # Use the same Python interpreter
 LOG_BASE_DIR   = "experiment_logs"   # Root directory for all log files
 DRY_RUN        = False               # If True, print commands without running
@@ -174,6 +174,10 @@ def all_combos(sweep: dict, seq_configs: list[tuple[int, int]]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def main():
+    # Force line-buffered stdout so output is flushed immediately,
+    # even when redirected to a file (e.g. python run_experiments.py > run_exp.log)
+    sys.stdout.reconfigure(line_buffering=True)
+
     combos = all_combos(SWEEP_PARAMS, SEQ_CONFIGS)
     total  = len(combos)
 
@@ -201,11 +205,14 @@ def main():
             print()
             continue
 
+        start_time = datetime.now()
+        print(f"         started  : {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
         with open(log_path, "w") as log_file:
             # Write a header into the log so it's self-documenting
             log_file.write(f"# run_name : {run_name}\n")
             log_file.write(f"# command  : {' '.join(cmd)}\n")
-            log_file.write(f"# started  : {datetime.now().isoformat()}\n\n")
+            log_file.write(f"# started  : {start_time.isoformat()}\n\n")
             log_file.flush()
 
             proc = subprocess.run(
@@ -213,6 +220,9 @@ def main():
                 stdout=log_file,
                 stderr=subprocess.STDOUT,   # merge stderr into the same file
             )
+
+        end_time = datetime.now()
+        elapsed  = end_time - start_time
 
         if proc.returncode != 0:
             # Re-read the tail of the log to surface the error in the console
@@ -226,11 +236,13 @@ def main():
                 tail = "(could not read log file)"
 
             print(f"         status   : FAILED (rc={proc.returncode})")
+            print(f"         finished : {end_time.strftime('%Y-%m-%d %H:%M:%S')}  (elapsed {elapsed})")
             print(f"         ---- last lines of {log_path} ----")
             print(tail)
             print(f"         ---- end of error output ----\n")
         else:
-            print(f"         status   : OK\n")
+            print(f"         status   : OK")
+            print(f"         finished : {end_time.strftime('%Y-%m-%d %H:%M:%S')}  (elapsed {elapsed})\n")
 
         results.append((run_name, proc.returncode))
 
