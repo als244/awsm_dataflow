@@ -273,7 +273,13 @@ DASHBOARD_HTML = None
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
-    def log_message(self, fmt, *args): pass
+    def log_message(self, fmt, *args):
+        # Log POST requests for debugging
+        pass
+
+    def _log_request(self, method, path, detail=""):
+        ts = datetime.now().strftime("%H:%M:%S")
+        print(f"  [{ts}] {method} {path} {detail}")
 
     def _json(self, data, status=200):
         self.send_response(status)
@@ -323,6 +329,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if p == "/api/runs":
             b = json.loads(self._body())
             rid = b.get("run_id", f"run_{int(time.time())}")
+            self._log_request("POST", "/api/runs", f"run={rid} name={b.get('name')} has_config={b.get('config') is not None}")
             db_create_run(rid, b.get("name"), b.get("model"), b.get("config"))
             broadcast_all(json.dumps({"type":"runs_updated","data":db_get_runs()}))
             self._json({"run_id": rid})
@@ -330,6 +337,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             b = json.loads(self._body())
             rid = b.get("run_id", "default")
             sn = b.get("step_num", 0)
+            self._log_request("POST", "/api/log", f"run={rid} step={sn} keys={list(b.keys())[:8]}")
             db_create_run(rid, name=b.get("run_name", rid), model=b.get("model"))
             db_log_step(rid, sn, b)
             broadcast_to_run(rid, json.dumps({"type":"step","run_id":rid,"data":b}))
@@ -339,6 +347,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             items = json.loads(self._body())
             if not items: self._json({"status":"ok"}); return
             rid = items[0].get("run_id", "default")
+            self._log_request("POST", "/api/log_batch", f"run={rid} count={len(items)} step_nums={[it.get('step_num','?') for it in items[:5]]}")
             db_create_run(rid, name=items[0].get("run_name",rid), model=items[0].get("model"))
             for it in items:
                 db_log_step(rid, it.get("step_num",0), it)
