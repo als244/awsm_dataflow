@@ -69,9 +69,15 @@ def init_db():
 def db_create_run(run_id, name=None, model=None, config=None):
     with db_lock:
         conn = get_db()
+        config_json = json.dumps(config) if config else None
         conn.execute(
-            "INSERT OR IGNORE INTO runs (run_id, name, model, config) VALUES (?, ?, ?, ?)",
-            (run_id, name or run_id, model, json.dumps(config) if config else None)
+            """INSERT INTO runs (run_id, name, model, config) VALUES (?, ?, ?, ?)
+               ON CONFLICT(run_id) DO UPDATE SET
+                   name = COALESCE(excluded.name, runs.name),
+                   model = COALESCE(excluded.model, runs.model),
+                   config = COALESCE(runs.config, excluded.config)
+            """,
+            (run_id, name or run_id, model, config_json)
         )
         conn.commit()
         conn.close()
