@@ -429,11 +429,12 @@ def main():
 
     init_db()
     server = ThreadedHTTPServer((args.host, args.port), DashboardHandler)
-    print(f"╔═══════════════════════════════════════════════════════╗")
-    print(f"║  Training Dashboard                                  ║")
-    print(f"║  http://localhost:{args.port:<38}║")
-    print(f"║  Database: {args.db:<44}║")
-    print(f"╚═══════════════════════════════════════════════════════╝")
+    url = f"http://localhost:{args.port}"
+    print(f"╔{'═'*55}╗")
+    print(f"║  {'Training Dashboard':<53}║")
+    print(f"║  {url:<53}║")
+    print(f"║  {'Database: ' + args.db:<53}║")
+    print(f"╚{'═'*55}╝")
     try: server.serve_forever()
     except KeyboardInterrupt:
         print("\nShutting down..."); server.shutdown()
