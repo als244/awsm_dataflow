@@ -226,6 +226,8 @@ if ret != 0:
 # Profiling setup
 # ---------------------------------------------------------------------------
 
+torch.cuda.empty_cache()
+
 if TO_PROFILE_BACKEND:
     active_model.start_profile()
 

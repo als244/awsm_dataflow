@@ -215,6 +215,7 @@ if ret != 0:
 
 
 
+torch.cuda.empty_cache()
 
 
 
@@ -245,6 +246,7 @@ if not os.path.exists(f"{SAVE_MODEL_PATH}/train_seqs"):
 if model_dims["num_routed_experts"] > 0:
     if not os.path.exists(f"{SAVE_MODEL_PATH}/expert_hists"):
         os.makedirs(f"{SAVE_MODEL_PATH}/expert_hists")
+
 
 if TO_PROFILE_TORCH_MEMORY:
     torch.cuda.memory._record_memory_history(max_entries=1000000)
