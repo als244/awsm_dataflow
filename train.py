@@ -261,6 +261,7 @@ while LOSS_THRESHOLD is None or loss_smoothed is None or loss_smoothed > LOSS_TH
     cur_step_stats = {}
 
     cur_step_stats["step_start_time"] = start_time
+    cur_step_stats["step_num"] = step_num 
 
     
     train_seqs = train_seq_pool.get_sequences(max_token_count=MAX_TOKENS_PER_STEP)
