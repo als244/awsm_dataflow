@@ -583,6 +583,10 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / (1 << 30):.2f}GB, Expected Host Memory Usage: {est_total_host_bytes / (1 << 30):.2f}GB")
 
     working_set_config = {
+        "available_gpu_memory_bytes": available_gpu_memory_capacity_bytes,
+        "available_host_memory_bytes": available_host_memory_capacity_bytes,
+        "leeway_gpu_memory_bytes": leeway_gpu_mem_bytes,
+        "leeway_host_memory_bytes": leeway_host_mem_bytes,
         "n_gpu_layers": min(n_gpu_layers, num_local_layers),
         "n_gpu_grads": min(n_gpu_grad_layers, num_local_layers),
         "n_gpu_opt_layers": min(n_gpu_opt_layers, num_local_layers),
