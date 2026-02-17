@@ -220,13 +220,13 @@ def get_transformer_matmul_report(chunk_size, model_dims, device_id=0, n_reps=10
 
     torch.cuda.synchronize()
 
-    del X, W_qkv, W_o, W_up, W_down
-    
+    del X, W_qkv, X_attn, W_o, resid, W_up, W_down
+
     if num_shared_experts > 0:
         del X_act
-    
+
     if num_routed_experts > 0:
-        del X_avg_exp_input, X_avg_exp_act
+        del W_router, X_avg_exp_input, X_avg_exp_act
 
     torch.cuda.empty_cache()
 
