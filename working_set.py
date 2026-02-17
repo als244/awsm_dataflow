@@ -512,7 +512,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         option = {"target_chunk_size": chunk_size, "target_num_chunks": target_num_chunks, "n_gpu_layers": n_gpu_layers, "n_gpu_grad_layers": n_gpu_grad_layers, "gpu_act_workspace_size_bytes": gpu_act_workspace_size_bytes, "gpu_act_slots": gpu_act_slots, "total_act_slots": total_act_slots}
         valid_options.append(option)
 
-        if additional_complete_layers_est >= 2:
+        ### this means a total of 2 complete layers
+        if additional_complete_layers_est >= 1:
             best_option = option
             break
 
