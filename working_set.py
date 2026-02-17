@@ -547,10 +547,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     gpu_act_slots = best_option["gpu_act_slots"]
     
     
-    gpu_act_buffer_size_bytes = gpu_act_slots * full_act_slot_size_bytes
+    gpu_act_buffer_size_bytes = gpu_act_workspace_size_bytes
     
     ## we reuse gpu act buffer during opt step
     assert gpu_act_buffer_size_bytes >= backbone_sizes["opt_bytes"]
+    assert gpu_act_buffer_size_bytes >= gpu_act_slots * full_act_slot_size_bytes
 
     n_gpu_opt_layers = int(min(num_local_layers, gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"]))
     
