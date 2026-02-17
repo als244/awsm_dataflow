@@ -415,13 +415,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     init_chunk_size_options = sorted(get_divisors(target_tokens_per_round), reverse=True)
 
     if fixed_seq_len:
-        chunk_size_options = []
-        for chunk_size in init_chunk_size_options:
-            if chunk_size >= max_seq_len and chunk_size % max_seq_len == 0:
-                chunk_size_options.append(chunk_size)
-            else:
-                if max_seq_len % chunk_size == 0:
-                    chunk_size_options.append(chunk_size)
+        max_seqs_per_round = target_tokens_per_round // max_seq_len
+        chunk_size_options = [max_seq_len * i for i in range(max_seqs_per_round, 0, -1)]
+        seq_len_divs = get_divisors(max_seq_len)
+        for seq_len_div in seq_len_divs:
+            chunk_size_options.append(seq_len_div)
     else:
         chunk_size_options = init_chunk_size_options
 
