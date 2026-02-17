@@ -1594,58 +1594,66 @@ logger = DashboardLogger(
         //  RUN SELECTION
         // ═══════════════════════════════════════════════════════
         async function selectRun(runId) {
+            activeRunId = runId;
+            activeRunConfig = null;
+
+            // FIRST: switch the view immediately
+            document.getElementById('welcomeView').style.display = 'none';
+            document.getElementById('runView').style.display = '';
+
+            try { switchTab('metrics'); } catch (e) { console.error('switchTab error:', e); }
+            try { renderRunList(); } catch (e) { console.error('renderRunList error:', e); }
+
+            // Subscribe via WS
             try {
-                activeRunId = runId;
-                activeRunConfig = null;
-
-                // FIRST: switch the view immediately so user sees something
-                document.getElementById('welcomeView').style.display = 'none';
-                document.getElementById('runView').style.display = '';
-
-                // Reset to metrics tab
-                switchTab('metrics');
-                renderRunList();
-
-                // Subscribe via WS
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'subscribe', run_id: runId }));
                 }
+            } catch (e) { }
 
-                // Fetch run metadata (includes config)
-                try {
-                    const runResp = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
-                    const runData = await runResp.json();
-                    if (runData.config) {
-                        try {
-                            activeRunConfig = typeof runData.config === 'string'
-                                ? JSON.parse(runData.config) : runData.config;
-                        } catch (e) {
-                            activeRunConfig = null;
+            // Fetch run metadata (includes config)
+            try {
+                const configUrl = `/api/runs/${encodeURIComponent(runId)}`;
+                console.log('[Dashboard] Fetching run metadata from:', configUrl);
+                const runResp = await fetch(configUrl);
+                const runText = await runResp.text();
+                console.log('[Dashboard] Raw response length:', runText.length, 'status:', runResp.status);
+                const runData = JSON.parse(runText);
+                console.log('[Dashboard] Parsed fields:', Object.keys(runData));
+                console.log('[Dashboard] config field type:', typeof runData.config, 'truthy:', !!runData.config);
+                if (runData.config) {
+                    console.log('[Dashboard] config preview:', String(runData.config).substring(0, 100));
+                    try {
+                        if (typeof runData.config === 'string') {
+                            activeRunConfig = JSON.parse(runData.config);
+                        } else if (typeof runData.config === 'object') {
+                            activeRunConfig = runData.config;
                         }
+                        console.log('[Dashboard] Config parsed OK, keys:', Object.keys(activeRunConfig));
+                    } catch (e) {
+                        console.error('[Dashboard] Config JSON.parse failed:', e.message);
+                        activeRunConfig = null;
                     }
-                } catch (e) {
-                    console.error('Failed to load run config:', e);
+                } else {
+                    console.log('[Dashboard] No config in response. Full keys:', Object.keys(runData), 'error?:', runData.error);
                 }
+            } catch (e) {
+                console.error('[Dashboard] Fetch run metadata failed:', e);
+            }
 
-                // Fetch steps
-                clearCharts();
-                activeSteps = [];
-                try {
-                    const resp = await fetch(`/api/runs/${encodeURIComponent(runId)}/steps`);
-                    const data = await resp.json();
-                    activeSteps = data;
-                    rebuildCharts();
-                    updateStats();
-                } catch (e) {
-                    console.error('Failed to load steps:', e);
-                }
-            } catch (err) {
-                console.error('selectRun error:', err);
-                // Show error visually
-                document.getElementById('welcomeView').style.display = 'none';
-                document.getElementById('runView').style.display = '';
-                document.getElementById('sStep').textContent = 'ERR';
-                document.getElementById('sLoss').textContent = String(err).substring(0, 30);
+            // Fetch steps
+            try { clearCharts(); } catch (e) { console.error('clearCharts error:', e); }
+            activeSteps = [];
+            try {
+                const resp = await fetch(`/api/runs/${encodeURIComponent(runId)}/steps`);
+                const data = await resp.json();
+                activeSteps = data;
+                rebuildCharts();
+                updateStats();
+            } catch (e) {
+                console.error('Failed to load/render steps:', e);
+                document.getElementById('sStep').textContent = activeSteps.length;
+                document.getElementById('sLoss').textContent = String(e).substring(0, 50);
             }
         }
 
