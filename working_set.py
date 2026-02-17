@@ -183,7 +183,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=4 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
@@ -201,24 +201,31 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     available_host_memory_capacity_bytes = baseline_hardware_env["available_host_memory_capacity"]
 
     if verbose:
-        print(f"[Working Set Log] Observed Available GPU Memory Capacity of {available_gpu_memory_capacity_bytes / (1 << 30):.2f}GB and Host Memory Capacity of {available_host_memory_capacity_bytes / (1 << 30):.2f}GB")
+        print(f"[Working Set Log] Raw Observed Available GPU Memory Capacity of {available_gpu_memory_capacity_bytes / (1 << 30):.2f}GB and Host Memory Capacity of {available_host_memory_capacity_bytes / (1 << 30):.2f}GB")
         if max_gpu_mem_bytes is not None:
             print(f"[Working Set Log] Inputted Max GPU Memory of {max_gpu_mem_bytes / (1 << 30):.2f}GB")
         if max_host_mem_bytes is not None:
-            print(f"[Working Set Log] Max Host Memory of {max_host_mem_bytes / (1 << 30):.2f}GB")
+            print(f"[Working Set Log] Inputted Max Host Memory of {max_host_mem_bytes / (1 << 30):.2f}GB")
         print(f"[Working Set Log] Using Leeway of {leeway_gpu_mem_bytes / (1 << 30):.2f}GB for GPU Memory and {leeway_host_mem_bytes / (1 << 30):.2f}GB for Host Memory")
 
     if max_gpu_mem_bytes is None:
-        max_gpu_mem_bytes = available_gpu_memory_capacity_bytes - leeway_gpu_mem_bytes
+        max_gpu_mem_bytes = available_gpu_memory_capacity_bytes
     else:
         if max_gpu_mem_bytes > available_gpu_memory_capacity_bytes:
-            raise ValueError("max_gpu_mem_bytes is greater than available_gpu_memory_capacity_bytes")
+            raise ValueError("Inputted max_gpu_mem_bytes is greater than available_gpu_memory_capacity_bytes")
 
     if max_host_mem_bytes is None:
-        max_host_mem_bytes = available_host_memory_capacity_bytes - leeway_host_mem_bytes
+        max_host_mem_bytes = available_host_memory_capacity_bytes   
     else:
         if max_host_mem_bytes > available_host_memory_capacity_bytes:
-            raise ValueError("max_host_mem_bytes is greater than available_host_memory_capacity_bytes")
+            raise ValueError("Inputted max_host_mem_bytes is greater than available_host_memory_capacity_bytes")
+
+    max_gpu_mem_bytes -= leeway_gpu_mem_bytes
+    if max_gpu_mem_bytes < 0:
+        raise ValueError("max_gpu_mem_bytes is less than 0 after accounting for leeway")
+    max_host_mem_bytes -= leeway_host_mem_bytes
+    if max_host_mem_bytes < 0:
+        raise ValueError("max_host_mem_bytes is less than 0 after accounting for leeway")
 
     
     baseline_gpu_bytes, baseline_host_bytes, endpoint_sizes, backbone_sizes = get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=training_config, has_embed=has_embed, has_head=has_head)
