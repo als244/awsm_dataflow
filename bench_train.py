@@ -14,7 +14,7 @@ from active_model import ActiveModel
 from working_set import determine_working_set_config
 from sequence import Sequence
 from sequence_pool import SequencePool
-
+from dashboard.dashboard_logger import DashboardLogger
 # ---------------------------------------------------------------------------
 # CLI Arguments
 # ---------------------------------------------------------------------------
@@ -109,6 +109,20 @@ opt_hyperparams = {
     "weight_decay":    0.01,
     "step_num":        0,
 }
+
+dashboard = DashboardLogger(
+    url="http://localhost:8501",
+    run_id=RUN_NAME,
+    run_name=f"{MODEL_CHOICE} {RUN_NAME}",
+    model=MODEL_CHOICE,
+    config={
+        "model_dims": model_dims,
+        "training_config": training_config,
+        "model_hyperparams": model_hyperparams,
+        "opt_hyperparams": opt_hyperparams,
+        "init_model_path": INIT_MODEL_PATH,
+    },
+)
 
 # ---------------------------------------------------------------------------
 # Sequence pool
@@ -318,6 +332,7 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     })
 
     step_stats[step_num] = cur_step_stats
+    dashboard.log(cur_step_stats)
 
     pickle.dump(train_seqs, open(f"{SAVE_MODEL_PATH}/train_seqs/step_{step_num}.pkl", "wb"))
 
@@ -343,6 +358,7 @@ if SAVE_FINAL:
     active_model.save(save_path, save_opt_state=True, save_gradients=True)
 
 torch.cuda.synchronize()
+dashboard.close()
 
 print(f"Cleaning up and destroying model...\n")
 active_model.destroy()

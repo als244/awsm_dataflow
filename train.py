@@ -12,6 +12,7 @@ from sequence import Sequence
 from sequence_pool import SequencePool
 import numpy as np
 import time
+from dashboard.dashboard_logger import DashboardLogger
 
 all_model_dims = json.load(open("model_dims.json"))
 
@@ -35,13 +36,14 @@ LOSS_THRESHOLD = None
 
 MODEL_CHOICE = "nanogpt_124M"
 
-RUN_NAME = "512k_muon"
+INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
+
+RUN_NAME = f"{MODEL_CHOICE}_gbs_{MAX_TOKENS_PER_STEP}_minchunk_{MIN_CHUNK_SIZE}_maxseq_{MAX_SEQ_LEN}_maxgpumem_{MAX_GPU_MEM_GB}_maxhostmem_{MAX_HOST_MEM_GB}_usemuon_{USE_MUON}"
 
 model_dims = all_model_dims[MODEL_CHOICE]
 
-INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
-SAVE_MODEL_PATH = f"fineweb_ckpts/my_{MODEL_CHOICE}_awsm_{RUN_NAME}"
+SAVE_MODEL_PATH = f"fineweb_ckpts/{RUN_NAME}"
 
 SAVE_CHECKPOINT_FREQ = 0
 
@@ -71,7 +73,7 @@ model_hyperparams = {
     "position_angles": torch.tensor([500000.0], dtype=torch.float32, device=device),
     "window_size_left": -1,
     "window_size_right": -1,
-    "load_bal_coeff": 0
+    "load_bal_coeff": 0.01
 }
 
 print("-------- Model Hyperparams --------")
@@ -103,7 +105,7 @@ est_total_steps = TOTAL_TOKENS / MAX_TOKENS_PER_STEP
 
 opt_hyperparams = {
     "lr": 0,
-    "max_lr": 1e-3,
+    "max_lr": 6e-4,
     "warmup_pct": 0.1,
     "cooldown_pct": 0.2,
     "final_lr": 1e-5,
@@ -120,7 +122,19 @@ print(opt_hyperparams)
 print("\n\n\n")
 
 
-
+dashboard = DashboardLogger(
+    url="http://localhost:8501",
+    run_id=RUN_NAME,
+    run_name=f"{MODEL_CHOICE} {RUN_NAME}",
+    model=MODEL_CHOICE,
+    config={
+        "model_dims": model_dims,
+        "training_config": training_config,
+        "model_hyperparams": model_hyperparams,
+        "opt_hyperparams": opt_hyperparams,
+        "init_model_path": INIT_MODEL_PATH,
+    }
+)
 
 
 
@@ -330,6 +344,7 @@ while LOSS_THRESHOLD is None or loss_smoothed is None or loss_smoothed > LOSS_TH
     cur_step_stats["total_tokens_per_sec"] = cur_step_stats["total_tokens"] / cur_step_stats["total_train_time"]
 
     step_stats[step_num] = cur_step_stats
+    dashboard.log(cur_step_stats)
 
     # Save sequences and expert histograms to disk for analysis later...
     pickle.dump(train_seqs, open(f"{SAVE_MODEL_PATH}/train_seqs/step_{step_num}.pkl", "wb"))
@@ -349,6 +364,8 @@ while LOSS_THRESHOLD is None or loss_smoothed is None or loss_smoothed > LOSS_TH
 
 print(f"\n\n\nSaving step stats to step_stats.pkl", flush=True)
 pickle.dump(step_stats, open(f"{SAVE_MODEL_PATH}/step_stats.pkl", "wb"))
+
+dashboard.close()
 
 if SAVE_FINAL:
     save_path = f"{SAVE_MODEL_PATH}/step_{opt_hyperparams['step_num']}"
