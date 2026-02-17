@@ -1014,6 +1014,10 @@ logger = DashboardLogger(
                             <div class="stat-val" id="sTPS">—</div>
                         </div>
                         <div class="stat-cell">
+                            <div class="stat-label">TFLOPS</div>
+                            <div class="stat-val" id="sTF">—</div>
+                        </div>
+                        <div class="stat-cell">
                             <div class="stat-label">Total Tokens</div>
                             <div class="stat-val" id="sTotalTok">—</div>
                         </div>
@@ -1142,7 +1146,7 @@ logger = DashboardLogger(
         const X_AXIS_OPTIONS = {
             step_num: { label: 'Step', short: 'Step', fmt: v => String(Math.round(v)) },
             total_train_time: { label: 'Train Time', short: 'Time', fmt: v => { if (v < 60) return v.toFixed(0) + 's'; if (v < 3600) return (v / 60).toFixed(1) + 'm'; return (v / 3600).toFixed(2) + 'h'; } },
-            total_flops_cost: { label: 'FLOPS', short: 'FLOPS', fmt: v => { if (v >= 1e18) return (v / 1e18).toFixed(1) + 'E'; if (v >= 1e15) return (v / 1e15).toFixed(1) + 'P'; if (v >= 1e12) return (v / 1e12).toFixed(1) + 'T'; return (v / 1e9).toFixed(1) + 'G'; } },
+            total_flops_cost: { label: 'FLOPS', short: 'FLOPS', fmt: v => v.toExponential(2) },
             total_tokens: { label: 'Tokens', short: 'Tokens', fmt: v => { if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B'; if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M'; if (v >= 1e3) return (v / 1e3).toFixed(0) + 'K'; return String(Math.round(v)); } },
             total_seqs: { label: 'Sequences', short: 'Seqs', fmt: v => { if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M'; if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K'; return String(Math.round(v)); } },
         };
@@ -1228,8 +1232,8 @@ logger = DashboardLogger(
         }
         function fmtTime(s) {
             if (s == null) return '—';
-            if (s < 60) return s.toFixed(0) + 's';
-            if (s < 3600) return (s / 60).toFixed(1) + 'm';
+            if (s < 60) return s.toFixed(2) + 's';
+            if (s < 3600) return (s / 60).toFixed(2) + 'm';
             return (s / 3600).toFixed(2) + 'h';
         }
         function timeAgo(iso) {
@@ -1399,8 +1403,9 @@ logger = DashboardLogger(
             document.getElementById('sStep').textContent = d.step_num || activeSteps.length;
             document.getElementById('sLoss').textContent = d.avg_loss != null ? Number(d.avg_loss).toFixed(4) : '—';
             document.getElementById('sSmooth').textContent = d.loss_smoothed != null ? Number(d.loss_smoothed).toFixed(4) : '—';
-            document.getElementById('sTPS').textContent = d.step_tokens_per_sec != null ? fmt(d.step_tokens_per_sec, 0) : '—';
-            document.getElementById('sTotalTok').textContent = d.total_tokens != null ? fmt(d.total_tokens, 1) : '—';
+            document.getElementById('sTPS').textContent = d.step_tokens_per_sec != null ? fmt(d.step_tokens_per_sec, 2) : '—';
+            document.getElementById('sTF').textContent = d.step_throughput_tflops != null ? Number(d.step_throughput_tflops).toFixed(2) : '—';
+            document.getElementById('sTotalTok').textContent = d.total_tokens != null ? fmt(d.total_tokens, 2) : '—';
             document.getElementById('sElapsed').textContent = d.total_train_time != null ? fmtTime(d.total_train_time) : '—';
 
             document.getElementById('bLoss').textContent = d.avg_loss != null ? Number(d.avg_loss).toFixed(4) : '—';
