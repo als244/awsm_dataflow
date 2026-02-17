@@ -33,14 +33,14 @@ from datetime import datetime
 SEQ_CONFIGS: list[tuple[int, int]] = [
     # (seq_len, seqs_per_step)
     (1024, 512),
-    (2048, 256),
-    (4096, 128),
+    # (2048, 256),
+    # (4096, 128),
     (8192, 64),
-    (16384, 32),
-    (32768, 16),
+    # (16384, 32),
+    # (32768, 16),
     (65536, 8),
-    (131072, 4),
-    (262144, 2),
+    # (131072, 4),
+    # (262144, 2),
 ]
 
 SWEEP_PARAMS = {
@@ -48,7 +48,8 @@ SWEEP_PARAMS = {
     # seqs_per_step here, they will be injected automatically.
     "max_gpu_mem_gb": [16, 18, 20, 22, 24, 26, 28, 30, 40, 50, 60, 70, None],
     # "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B", "qwen3_32B", "qwen3_30Bx3B"],
-    "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B"]
+    "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B"],
+    "force_saved_act_level": [None, 0, 3],
 }
 
 # ---------------------------------------------------------------------------
@@ -64,7 +65,7 @@ FIXED_PARAMS = {
 # Runner settings
 # ---------------------------------------------------------------------------
 
-TRAIN_SCRIPT   = "train.py"          # Path to train.py relative to this script
+TRAIN_SCRIPT   = "bench_train.py"          # Path to train.py relative to this script
 PYTHON         = sys.executable      # Use the same Python interpreter
 LOG_BASE_DIR   = "experiment_logs"   # Root directory for all log files
 DRY_RUN        = False               # If True, print commands without running
