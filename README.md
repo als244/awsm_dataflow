@@ -1,4 +1,4 @@
-# AWSM Transformer Training
+# AdaWS: Adaptive Working Set Strategy for High Throughput Transformer Training Under Memory Constraints
 
 ## Steps
 
