@@ -139,6 +139,13 @@ def db_rename_run(run_id, new_name):
 
 def db_get_runs():
     conn = get_db()
+    # Auto-mark stale "running" runs as "stopped" (no update in 5 minutes)
+    conn.execute(
+        """UPDATE runs SET status = 'stopped'
+           WHERE status = 'running'
+           AND updated_at < datetime('now', '-5 minutes')"""
+    )
+    conn.commit()
     rows = conn.execute("SELECT * FROM runs ORDER BY updated_at DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]

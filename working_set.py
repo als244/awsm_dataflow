@@ -57,7 +57,11 @@ def get_baseline_model_memory_requirements(model_dims, num_local_layers, trainin
     if has_embed and grad_dims is not None:
         embed_master_bytes = get_embedding_size_bytes(master_dims)
         embed_grad_bytes = get_embedding_size_bytes(grad_dims)
-        embed_opt_bytes = opt_mult * get_embedding_size_bytes(opt_dims)
+
+        ### endpoints use AdamW
+        embed_opt_mult = 2
+
+        embed_opt_bytes = embed_opt_mult * get_embedding_size_bytes(opt_dims)
 
         required_gpu_bytes += embed_master_bytes + embed_grad_bytes + embed_opt_bytes
 
@@ -69,7 +73,11 @@ def get_baseline_model_memory_requirements(model_dims, num_local_layers, trainin
     if has_head and grad_dims is not None:
         head_master_bytes = get_head_size_bytes(master_dims)
         head_grad_bytes = get_head_size_bytes(grad_dims)
-        head_opt_bytes = opt_mult * get_head_size_bytes(opt_dims)
+
+        ### endpoints use AdamW
+        head_opt_mult = 2
+
+        head_opt_bytes = head_opt_mult * get_head_size_bytes(opt_dims)
 
         required_gpu_bytes += head_master_bytes + head_grad_bytes + head_opt_bytes
 
@@ -86,6 +94,10 @@ def get_baseline_model_memory_requirements(model_dims, num_local_layers, trainin
         backbone_weight_bytes = get_backbone_layer_size_bytes(model_dims)
         backbone_grad_bytes = get_backbone_layer_size_bytes(grad_dims)
         backbone_opt_bytes = opt_mult * get_backbone_layer_size_bytes(opt_dims)
+
+        ### Need to account for fact that router and norms use adamW
+        if opt_choice == "Muon":
+            backbone_opt_bytes += get_torch_dtype(training_config["opt_dtype"]).itemsize * (2 * model_dims["d_model"] + model_dims["num_routed_experts"] * model_dims["d_model"])
 
         backbone_sizes = {"master_bytes": backbone_master_bytes, "weight_bytes": backbone_weight_bytes, "grad_bytes": backbone_grad_bytes, "opt_bytes": backbone_opt_bytes}
 
@@ -183,7 +195,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=4 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=2 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
@@ -410,8 +422,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     if min_chunk_size is not None:
         init_target_min_chunk_size = max(min_chunk_size, init_target_min_chunk_size)
 
-    satisfied = False
-
     init_chunk_size_options = sorted(get_divisors(target_tokens_per_round), reverse=True)
 
     if fixed_seq_len:
@@ -423,7 +433,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     else:
         chunk_size_options = init_chunk_size_options
 
-    chunk_size_options = [d for d in chunk_size_options if d >= 256]
+    chunk_size_options = [d for d in chunk_size_options if d >= init_target_min_chunk_size]
     
     cur_remaining_gpu_mem_bytes = remaining_gpu_mem_bytes
 

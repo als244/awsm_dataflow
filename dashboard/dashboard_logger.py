@@ -173,10 +173,15 @@ class DashboardLogger:
         self._stop_event = threading.Event()
         self._thread = None
         self._registered = False
+        self._closed = False
 
         if self.enabled:
             self._thread = threading.Thread(target=self._worker, daemon=True)
             self._thread.start()
+
+            # Auto-close on exit (crash, KeyboardInterrupt, normal exit)
+            import atexit
+            atexit.register(self.close)
 
     def _register_run(self):
         """Register this run with the server. Returns True on success."""
@@ -265,8 +270,9 @@ class DashboardLogger:
 
     def close(self):
         """Mark run as completed, flush remaining stats, and stop."""
-        if not self.enabled:
+        if not self.enabled or self._closed:
             return
+        self._closed = True
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=10)
