@@ -58,7 +58,7 @@ python train.py [OPTIONS]
 python bench_train.py
 
 # Custom configuration using maximum of 20GB of GPU memory and 80GB of host memory
-python bench_train.py --run_name experiment_1 --model_choice llama3_8B --seq_len 65536 --seqs_per_step 5 --max_gpu_mem_gb 20 --max_host_mem_gb 80
+python bench_train.py --run_name hello_flops --model_choice llama3_8B --seq_len 65536 --seqs_per_step 5 --max_gpu_mem_gb 20 --max_host_mem_gb 80
 ```
 
 #### b) FineWeb Run
