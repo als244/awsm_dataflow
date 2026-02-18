@@ -1284,17 +1284,12 @@ logger = DashboardLogger(
 
         function renderRunList() {
             const list = document.getElementById('runList');
-            const empty = document.getElementById('emptyRuns');
             document.getElementById('runCount').textContent = runs.length;
 
             if (runs.length === 0) {
-                list.innerHTML = '';
-                list.appendChild(empty);
-                empty.style.display = '';
+                list.innerHTML = `<div class="empty-runs">No runs yet.<br>Start training to see runs here.</div>`;
                 return;
             }
-
-            empty.style.display = 'none';
 
             // Build HTML without inline onclick — use event delegation
             list.innerHTML = runs.map((r, i) => `
@@ -1318,7 +1313,6 @@ logger = DashboardLogger(
 
             // Event delegation for clicks
             list.onclick = (e) => {
-                // Find which run-item or action was clicked
                 const actionBtn = e.target.closest('[data-action]');
                 if (actionBtn) {
                     e.stopPropagation();
