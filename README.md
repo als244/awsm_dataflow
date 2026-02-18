@@ -45,7 +45,7 @@ ssh -N -f -L 8501:<server_hostname>:8501 <username>@<remote_hostname>
 Run a benchmark training loop using randomly generated fixed-length sequence data:
 
 ```bash
-python train.py [OPTIONS]
+python bench_train.py [OPTIONS]
 ```
 
 ##### Options
