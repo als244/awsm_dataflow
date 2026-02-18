@@ -16,6 +16,7 @@ To hard-pin a non-swept parameter to a specific value, add it to
 FIXED_PARAMS instead.
 """
 
+import argparse
 import itertools
 import subprocess
 import os
@@ -170,6 +171,31 @@ def all_combos(sweep: dict, seq_configs: list[tuple[int, int]]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Sweep over experiment configurations and launch train.py for each."
+    )
+    parser.add_argument(
+        "--start-from",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Resume from experiment number N (1-indexed, matching the [N/total] counter). "
+             "All experiments before N are skipped. Default: 1 (run everything).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=DRY_RUN,
+        help="Print commands without executing them.",
+    )
+    return parser.parse_args()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -178,18 +204,31 @@ def main():
     # even when redirected to a file (e.g. python run_experiments.py > run_exp.log)
     sys.stdout.reconfigure(line_buffering=True)
 
+    args   = parse_args()
     combos = all_combos(SWEEP_PARAMS, SEQ_CONFIGS)
     total  = len(combos)
 
+    start_from = args.start_from
+    dry_run    = args.dry_run
+
+    if start_from < 1 or start_from > total:
+        print(f"ERROR: --start-from must be between 1 and {total} (got {start_from})")
+        sys.exit(1)
+
     print(f"Experiment sweep: {total} combination(s)")
+    if start_from > 1:
+        print(f"Resuming from   : experiment #{start_from}  (skipping first {start_from - 1})")
     print(f"Logs directory  : {LOG_BASE_DIR}/")
-    if DRY_RUN:
+    if dry_run:
         print("*** DRY RUN — commands will be printed but not executed ***")
     print()
 
     results = []  # list of (run_name, returncode)
 
     for idx, combo in enumerate(combos, start=1):
+        if idx < start_from:
+            continue
+
         run_name = params_to_run_name(combo)
         cmd      = build_cmd(combo, FIXED_PARAMS, run_name)
         log_path = params_to_log_path(combo)
@@ -201,7 +240,7 @@ def main():
         print(f"         command  : {' '.join(cmd)}")
         print(f"         log      : {log_path}")
 
-        if DRY_RUN:
+        if dry_run:
             print()
             continue
 
@@ -249,9 +288,11 @@ def main():
     # ---------------------------------------------------------------------------
     # Summary
     # ---------------------------------------------------------------------------
-    if not DRY_RUN:
+    if not dry_run:
         print("=" * 60)
         print("SWEEP SUMMARY")
+        if start_from > 1:
+            print(f"(resumed from experiment #{start_from})")
         print("=" * 60)
         failed = [(name, rc) for name, rc in results if rc != 0]
         for name, rc in results:
@@ -259,12 +300,12 @@ def main():
             print(f"  {mark}  {name}  (rc={rc})")
         print()
         if failed:
-            print(f"{len(failed)}/{total} run(s) FAILED:")
+            print(f"{len(failed)}/{len(results)} run(s) FAILED:")
             for name, rc in failed:
                 print(f"    {name}  (rc={rc})")
             sys.exit(1)
         else:
-            print(f"All {total} run(s) completed successfully.")
+            print(f"All {len(results)} run(s) completed successfully.")
 
 
 if __name__ == "__main__":
