@@ -26,7 +26,9 @@ This will start a web server at `http://localhost:8501`. If you are working on a
 
 ```bash
 ssh -N -f -L 8501:<server_hostname>:8501 <username>@<remote_hostname>
+# For use on Princeton Cluster, on local shell: 'ssh -N -f -L 8501:della-k17g3:8501 as1669@della.princeton.edu', then open http://localhost:8501 in your browser
 ```
+
 
 ### 4. Run Training
 
