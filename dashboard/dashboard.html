@@ -1640,6 +1640,14 @@ logger = DashboardLogger(
             document.getElementById('welcomeView').style.display = 'none';
             document.getElementById('runView').style.display = '';
 
+            // Clear stats immediately so stale values from prior run don't linger
+            ['sStep', 'sLoss', 'sSmooth', 'sTPS', 'sTF', 'sTotalTok', 'sElapsed'].forEach(
+                id => document.getElementById(id).textContent = '—'
+            );
+            ['bLoss', 'bTPS', 'bTF', 'bLR', 'bTok', 'bDur', 'bCum', 'bSeqLen', 'bMem'].forEach(
+                id => document.getElementById(id).textContent = '—'
+            );
+
             try { switchTab('metrics'); } catch (e) { console.error('switchTab error:', e); }
             try { renderRunList(); } catch (e) { console.error('renderRunList error:', e); }
 
