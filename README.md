@@ -67,7 +67,7 @@ python bench_train.py [OPTIONS]
 # Run with defaults
 python bench_train.py
 
-# Custom configuration using maximum of 20GB of GPU memory and 80GB of host memory
+# Custom configuration using maximum of 20GB of GPU memory and 120GB of host memory
 python bench_train.py --run_name hello_flops --model_choice llama3_8B --seq_len 65536 --seqs_per_step 5 --max_gpu_mem_gb 20 --max_host_mem_gb 120
 ```
 
