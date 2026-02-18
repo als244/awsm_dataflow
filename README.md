@@ -22,6 +22,12 @@ Run the dashboard server to view training progress:
 python dashboard/dashboard_server.py --port 8501
 ```
 
+This will start a web server at `http://localhost:8501`. If you are working on a remote server, run this command and then create a port forward to access the dashboard from local machine. This can be done with the following command:
+
+```bash
+ssh -N -f -L 8501:<server_hostname>:8501 <username>@<remote_hostname>
+```
+
 ### 4. Run Training
 
 #### a) Benchmark Training
