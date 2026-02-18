@@ -2,6 +2,12 @@
 
 ## Steps
 
+### 0. Clone the Repository
+
+```bash
+git clone https://github.com/als244/awsm_dataflow.git
+```
+
 ### 1. Set Up Python Environment
 
 Use a Python environment with PyTorch and Flash Attention 2 or Flash Attention 3 installed.
