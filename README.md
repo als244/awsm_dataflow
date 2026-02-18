@@ -26,7 +26,7 @@ python dashboard/dashboard_server.py --port 8501
 
 #### a) Benchmark Training
 
-Run a benchmark training loop using randomly generated sequence data:
+Run a benchmark training loop using randomly generated fixed-length sequence data:
 
 ```bash
 python train.py [OPTIONS]
