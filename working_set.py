@@ -186,10 +186,20 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
 
     ## Working space during execution
 
-    ## for moe models we need scatter space
-    moe_workspace = 2 * (chunk_size * model_dims["top_k"] * model_dims["d_model"]) * residual_dtype.itemsize
-    dense_workspace = chunk_size * (2 * model_dims["d_model"] + model_dims["num_shared_experts"] * model_dims["expert_dim"]) * residual_dtype.itemsize
-    gpu_working_space_bytes = moe_workspace + dense_workspace
+    ## during backwards to get dX_attn_up and dQ and local dK,dV
+    attn_workspace = chunk_size * (2 * model_dims["n_heads"] * model_dims["head_dim"] + 2 * model_dims["n_kv_heads"] * model_dims["head_dim"]) * residual_dtype.itemsize
+    mlp_workspace = 0
+    if model_dims["num_routed_experts"] > 0:
+        ### for attn norm output, scattered X and scattered upstream
+        mlp_workspace = chunk_size * (model_dims["d_model"] + 2 * model_dims["top_k"] * model_dims["d_model"]) * residual_dtype.itemsize
+    else:
+        ### during backwards when we compute activation upstream and recomptue forward activations
+        mlp_workspace = chunk_size * 2 * model_dims["expert_dim"] * residual_dtype.itemsize
+
+    resid_workspace = chunk_size * model_dims["d_model"] * residual_dtype.itemsize
+
+
+    gpu_working_space_bytes = resid_workspace + max(attn_workspace, mlp_workspace)
     required_gpu_bytes += gpu_working_space_bytes
 
     return required_gpu_bytes

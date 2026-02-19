@@ -220,9 +220,7 @@ class TransformerLayer():
         # 6.) now do weight gradients for w1 and w3 now that we have inputs to matmuls (recomputed ffn norm output) and upstream gradients
         torch.addmm(grad_weights["g_1"], ffn_norm_fwd_output.T, dx1_up, alpha=1.0, beta=1.0, out=grad_weights["g_1"])
         torch.addmm(grad_weights["g_3"], ffn_norm_fwd_output.T, dx3_up, alpha=1.0, beta=1.0, out=grad_weights["g_3"])
-
-        del dx1_up
-        del dx3_up
+        
         del ffn_norm_fwd_output
 
 
