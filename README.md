@@ -58,8 +58,8 @@ python bench_train.py [OPTIONS]
 | `--seq_len` | int | `8192` | Sequence length |
 | `--seqs_per_step` | int | `64` | Sequences per step |
 | `--max_steps` | int | `10` | Max training steps (0 = unlimited) |
-| `--max_gpu_mem_gb` | float | 30 | Max GPU memory in GB (0 = detect available capacity) |
-| `--max_host_mem_gb` | float | 120 | Max Host memory in GB (0 = detect available capacity) |
+| `--max_gpu_mem_gb` | float | `30` | Max GPU memory in GB (0 = detect available capacity) |
+| `--max_host_mem_gb` | float | `120` | Max Host memory in GB (0 = detect available capacity) |
 | `--use_muon` | bool | `True` | Use Muon optimizer (`--use_muon false` to disable) |
 
 ##### Example
