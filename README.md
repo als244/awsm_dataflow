@@ -11,9 +11,10 @@ git clone https://github.com/als244/awsm_dataflow.git
 ### 1. Set Up Python Environment
 
 - Use a Python environment with PyTorch and Flash Attention 2 or Flash Attention 3 installed.  Follow instructions at [Flash Repo](https://github.com/Dao-AILab/flash-attention).
-- Ensure that you have CUDA toolkit available (check command `nvcc --version`) before step 2 which requires access to CUDA headers and cublaslt library.
 
 ### 2. Install Helper Modules
+
+- Ensure that you have CUDA toolkit available (check command `nvcc --version`), the matrix multiplication dispatcher requires access to CUDA headers and cublaslt library.
 
 Install the helper Python modules (matmul dispatcher and transmission scheduler):
 
