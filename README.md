@@ -10,7 +10,7 @@ git clone https://github.com/als244/awsm_dataflow.git
 
 ### 1. Set Up Python Environment
 
-Use a Python environment with PyTorch and Flash Attention 2 or Flash Attention 3 installed.
+Use a Python environment with PyTorch and Flash Attention 2 or Flash Attention 3 installed. Follow instructions at [Flash Repo](https://github.com/Dao-AILab/flash-attention).
 
 ### 2. Install Helper Modules
 
