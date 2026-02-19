@@ -31,6 +31,7 @@ parser.add_argument("--use_muon",                  type=lambda x: x.lower() != '
 parser.add_argument("--model_choice",              type=str,   default="olmoe_7Bx1B", help="Model choice key from model_dims.json")
 parser.add_argument("--run_name",                  type=str,   default="default_run", help="Run name")
 parser.add_argument("--force_saved_act_level",     type=int,   default=None,          help="Force saved activation level")
+parser.add_argument("--device_id",                 type=int,   default=0,             help="Device ID")
 args = parser.parse_args()
 
 SEQ_LEN                    = args.seq_len
@@ -44,6 +45,9 @@ USE_MUON                   = args.use_muon
 MODEL_CHOICE               = args.model_choice
 RUN_NAME                   = args.run_name
 FORCE_SAVED_ACT_LEVEL      = args.force_saved_act_level
+DEVICE_ID                  = args.device_id
+
+torch.cuda.set_device(DEVICE_ID)
 
 # ---------------------------------------------------------------------------
 # Fixed constants
@@ -53,7 +57,6 @@ TO_PROFILE_BACKEND      = True
 TO_PROFILE_TORCH_MEMORY = False
 TO_SAVE_ERROR           = True
 
-DEVICE_ID           = 0
 MAX_TOKENS_PER_STEP = SEQ_LEN * SEQS_PER_STEP
 MIN_SEQ_LEN         = SEQ_LEN
 MAX_SEQ_LEN         = SEQ_LEN

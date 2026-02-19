@@ -52,6 +52,7 @@ python bench_train.py [OPTIONS]
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
+| `--device_id` | int | `0` | Device ID |
 | `--run_name` | str | `default_run` | Run name (displayed in dashboard) |
 | `--model_choice` | str | `llama3_8B` | Model choice key from `model_dims.json` |
 | `--seq_len` | int | `8192` | Sequence length |
