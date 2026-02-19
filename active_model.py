@@ -1695,6 +1695,10 @@ class ActiveModel:
         cur_grad_idx = self.first_grad_layer_index_for_step
         cur_opt_idx = 0
 
+        weight_idx_tracker = {}
+        for i in range(self.n_gpu_model_layers):
+            weight_idx_tracker[i] = (cur_weight_idx + i) % self.n_gpu_model_layers
+
         ### the first n_gpu_model_layers and n_gpu_grads should be available...
         for k_ind in range(len(self.local_layer_ids)):
 
@@ -1736,6 +1740,8 @@ class ActiveModel:
                     self.profiler.range_pop()                   
                 self.weight_inbound_events[next_weight_layer_id] = self.inbound_stream.record_event()
                 self.weight_inbound_events[layer_id] = None
+                ## indicate this next_weight_layer_id will be at the curretn weight idx
+                weight_idx_tracker[next_weight_layer_id] = cur_weight_idx  
                     
                 
             if k_ind + self.n_gpu_grads < len(self.local_layer_ids):
@@ -1760,28 +1766,44 @@ class ActiveModel:
 
             #self.compute_stream.wait_stream(self.outbound_stream)
             
-            cur_weight_idx = (cur_weight_idx + 1) % self.n_gpu_model_layers
-            cur_grad_idx = (cur_grad_idx + 1) % self.n_gpu_grads
-            cur_opt_idx = (cur_opt_idx + 1) % self.n_gpu_opt_layers
+            if k_ind < len(self.local_layer_ids) - 1:
+                cur_weight_idx = (cur_weight_idx + 1) % self.n_gpu_model_layers
+                cur_grad_idx = (cur_grad_idx + 1) % self.n_gpu_grads
+                cur_opt_idx = (cur_opt_idx + 1) % self.n_gpu_opt_layers
 
             
         ### Reload early layers to get ready for next fwd_bwd...
         self.inbound_stream.wait_stream(self.compute_stream)
         self.inbound_stream.wait_stream(self.outbound_stream)
 
-        cur_weight_idx = 0
 
         self.weight_inbound_events.clear()
+
+        ## now we know weights for self.local_layer_ids[-1] is at self.model_weights_gpu[cur_weight_idx]
+        ## we will reassign indices for some of the first n_gpu_model_layers that might already be in window
+        ## but at wrong index
+
+        temp_model_weights = {}
+        for k, v in self.model_weights_gpu.items():
+            temp_model_weights[k] = v
+
+        cur_weight_idx = 0
+
  
         for i in range(self.n_gpu_model_layers):
             layer_id = self.local_layer_ids[i]
-            layer = self.model_layers[layer_id]
-            with self.inbound_stream:
-                self.profiler.range_push(f"Reload Weights: Layer {layer_id}")
-                layer.fetch_weights(self.model_weights_gpu[cur_weight_idx], self.cpu_model_weights[layer_id])
-                self.profiler.range_pop()
 
-            self.weight_inbound_events[layer_id] = self.inbound_stream.record_event()
+            ### if we already have updated weights on gpu reassign index for start of next fwd_bwd
+            if layer_id in weight_idx_tracker:
+                self.model_weights_gpu[cur_weight_idx] = temp_model_weights[weight_idx_tracker[layer_id]]
+            else:
+                layer = self.model_layers[layer_id]
+                with self.inbound_stream:
+                    self.profiler.range_push(f"Reload Weights: Layer {layer_id}")
+                    layer.fetch_weights(self.model_weights_gpu[cur_weight_idx], self.cpu_model_weights[layer_id])
+                    self.profiler.range_pop()
+
+                self.weight_inbound_events[layer_id] = self.inbound_stream.record_event()
 
             ## we started at 0, so reloading should fill up the first n_gpu_model_layers
             cur_weight_idx += 1
