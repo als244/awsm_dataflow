@@ -1803,7 +1803,7 @@ class ActiveModel:
                     layer.fetch_weights(self.model_weights_gpu[cur_weight_idx], self.cpu_model_weights[layer_id])
                     self.profiler.range_pop()
 
-                self.weight_inbound_events[layer_id] = self.inbound_stream.record_event()
+            self.weight_inbound_events[layer_id] = self.inbound_stream.record_event()
 
             ## we started at 0, so reloading should fill up the first n_gpu_model_layers
             cur_weight_idx += 1
