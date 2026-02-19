@@ -58,8 +58,8 @@ python bench_train.py [OPTIONS]
 | `--seq_len` | int | `8192` | Sequence length |
 | `--seqs_per_step` | int | `64` | Sequences per step |
 | `--max_steps` | int | `10` | Max training steps (0 = unlimited) |
-| `--max_gpu_mem_gb` | float | `None` | Max GPU memory in GB (none = detect available capacity) |
-| `--max_host_mem_gb` | float | `None` | Max host memory in GB (none = detect available capacity) |
+| `--max_gpu_mem_gb` | float | 30 | Max GPU memory in GB (0 = detect available capacity) |
+| `--max_host_mem_gb` | float | 120 | Max Host memory in GB (0 = detect available capacity) |
 | `--use_muon` | bool | `True` | Use Muon optimizer (`--use_muon false` to disable) |
 
 ##### Example
@@ -68,8 +68,8 @@ python bench_train.py [OPTIONS]
 # Run with defaults
 python bench_train.py
 
-# Custom configuration using maximum of 20GB of GPU memory and 120GB of host memory
-python bench_train.py --run_name hello_flops --model_choice llama3_8B --seq_len 65536 --seqs_per_step 5 --max_gpu_mem_gb 20 --max_host_mem_gb 120
+# Custom configuration using maximum of 24GB of GPU memory and 180GB of host memory
+python bench_train.py --run_name hello_flops --model_choice sparse_16Bx3B --seq_len 65536 --seqs_per_step 5 --max_gpu_mem_gb 24 --max_host_mem_gb 180
 ```
 
 #### b) FineWeb Run
