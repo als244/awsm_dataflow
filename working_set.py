@@ -193,6 +193,8 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
         ### for attn norm output, scattered X and scattered upstream
         mlp_workspace = chunk_size * (model_dims["d_model"] + 2 * model_dims["top_k"] * model_dims["d_model"]) * residual_dtype.itemsize
         ### for temporary workspace to do intra-expert backprop
+        ### the chunk size * top_k / routed experts is suppose to maximum instead of average, but this shoudld be reasonable good estimate
+        ### and should be minimal compared to other workspace requirements for fine-grained moe
         mlp_workspace += 2 * int(chunk_size * model_dims["top_k"] / model_dims["num_routed_experts"]) * 4 * model_dims["expert_dim"] * residual_dtype.itemsize
     else:
         ### during backwards when we compute activation upstream and recomptue forward activations
