@@ -186,24 +186,10 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
 
     ## Working space during execution
 
-    ## during backwards to get dX_attn_up and dQ and local dK,dV
-    attn_workspace = chunk_size * (2 * model_dims["n_heads"] * model_dims["head_dim"] + 2 * model_dims["n_kv_heads"] * model_dims["head_dim"]) * residual_dtype.itemsize
-    mlp_workspace = 0
-    if model_dims["num_routed_experts"] > 0:
-        ### for attn norm output, scattered X and scattered upstream
-        mlp_workspace = chunk_size * (model_dims["d_model"] + 2 * model_dims["top_k"] * model_dims["d_model"]) * residual_dtype.itemsize
-        ### for temporary workspace to do intra-expert backprop
-        ### the chunk size * top_k / routed experts is suppose to maximum instead of average, but this shoudld be reasonable good estimate
-        ### and should be minimal compared to other workspace requirements for fine-grained moe
-        mlp_workspace += 2 * int(chunk_size * model_dims["top_k"] / model_dims["num_routed_experts"]) * 4 * model_dims["expert_dim"] * residual_dtype.itemsize
-    else:
-        ### during backwards when we compute activation upstream and recomptue forward activations
-        mlp_workspace = chunk_size * 2 * model_dims["expert_dim"] * residual_dtype.itemsize
-
-    resid_workspace = chunk_size * model_dims["d_model"] * residual_dtype.itemsize
-
-
-    gpu_working_space_bytes = resid_workspace + max(attn_workspace, mlp_workspace)
+    ## for moe models we need scatter space
+    moe_workspace = 2 * (chunk_size * model_dims["top_k"] * model_dims["d_model"]) * residual_dtype.itemsize
+    dense_workspace = chunk_size * (2 * model_dims["d_model"] + model_dims["num_shared_experts"] * model_dims["expert_dim"]) * residual_dtype.itemsize
+    gpu_working_space_bytes = moe_workspace + dense_workspace
     required_gpu_bytes += gpu_working_space_bytes
 
     return required_gpu_bytes
@@ -374,14 +360,21 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     if verbose:
         print(f"[Working Set Log] Baseline Target Tokens Per Round for Sufficient Computation Time: {target_tokens_per_round}")
     
-    agg_act_bytes_per_token = num_local_layers * get_full_act_slot_size_bytes(model_dims, 1)
-    full_save_tokens_per_round = math.ceil(remaining_total_mem / (agg_act_bytes_per_token))
+    full_agg_act_bytes_per_token = num_local_layers * get_full_act_slot_size_bytes(model_dims, 1)
+    min_act_bytes_per_token = num_local_layers * get_min_act_slot_size_bytes(model_dims, 1)
+    full_save_tokens_per_round = remaining_total_mem // full_agg_act_bytes_per_token
+    min_save_tokens_per_round = remaining_total_mem // min_act_bytes_per_token
 
     if verbose:
-        print(f"[Working Set Log] Based on aggregate available memory to save all activations must use <= {full_save_tokens_per_round} tokens per round")
-        print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with max seq len: {max_seq_len} and full save tokens per round: {full_save_tokens_per_round} and max tokens per round: {max_tokens_per_round}")
+        print(f"[Working Set Log] Based on aggregate available memory to save all activations must use <= {full_save_tokens_per_round} tokens per round and to save minimum activations must use <= {min_save_tokens_per_round} tokens per round")
+        print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with max seq len: {max_seq_len}, full save tokens per round: {full_save_tokens_per_round}, min save tokens per round: {min_save_tokens_per_round} and max tokens per round: {max_tokens_per_round}")
 
-    target_tokens_per_round = max(max_seq_len, min(target_tokens_per_round, full_save_tokens_per_round))
+
+    #target_tokens_per_round = max(max_seq_len, min(target_tokens_per_round, full_save_tokens_per_round))
+    target_tokens_per_round = max(max_seq_len, target_tokens_per_round)
+
+    if target_tokens_per_round > min_save_tokens_per_round:
+        raise ValueError(f"Error: Could not find a valid configuration for seq len {max_seq_len}; estimated max tokens with min activations to be {min_save_tokens_per_round}")
 
     ### cannot exceed max tokens per round determined by memory constraints
     target_tokens_per_round = min(max_tokens_per_round, target_tokens_per_round)
@@ -619,7 +612,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         "max_training_chunks": target_num_chunks,
         "max_chunk_size": target_chunk_size,
         "max_seq_len": max_seq_len,
-        "target_round_tokens": target_num_chunks * target_chunk_size,
+        "target_round_tokens": target_chunk_size * target_num_chunks,
         "max_total_round_tokens": max_tokens_per_round,
         "host_act_buffer_size": int(host_act_buffer_size_bytes),
         "gpu_act_buffer_size": int(gpu_act_buffer_size_bytes),
