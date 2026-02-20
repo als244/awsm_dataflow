@@ -186,11 +186,26 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
 
     ## Working space during execution
 
-    ## for moe models we need scatter space
-    moe_workspace = 2 * (chunk_size * model_dims["top_k"] * model_dims["d_model"]) * residual_dtype.itemsize
-    dense_workspace = chunk_size * (2 * model_dims["d_model"] + model_dims["num_shared_experts"] * model_dims["expert_dim"]) * residual_dtype.itemsize
-    gpu_working_space_bytes = moe_workspace + dense_workspace
+    ## during backwards to get dX_attn_up and dQ and local dK,dV
+    attn_workspace = chunk_size * (2 * model_dims["n_heads"] * model_dims["head_dim"] + 2 * model_dims["n_kv_heads"] * model_dims["head_dim"]) * residual_dtype.itemsize
+    mlp_workspace = 0
+    if model_dims["num_routed_experts"] > 0:
+        ### for attn norm output, scattered X and scattered upstream
+        mlp_workspace = chunk_size * (model_dims["d_model"] + 2 * model_dims["top_k"] * model_dims["d_model"]) * residual_dtype.itemsize
+        ### for temporary workspace to do intra-expert backprop
+        ### the chunk size * top_k / routed experts is suppose to maximum instead of average, but this shoudld be reasonable good estimate
+        ### and should be minimal compared to other workspace requirements for fine-grained moe
+        mlp_workspace += 2 * int(chunk_size * model_dims["top_k"] / model_dims["num_routed_experts"]) * 4 * model_dims["expert_dim"] * residual_dtype.itemsize
+    else:
+        ### during backwards when we compute activation upstream and recomptue forward activations (d act upstream, fwd act, dx1_up, dx3_up)
+        mlp_workspace = chunk_size * 4 * model_dims["expert_dim"] * residual_dtype.itemsize
+
+    resid_workspace = chunk_size * model_dims["d_model"] * residual_dtype.itemsize
+
+
+    gpu_working_space_bytes = resid_workspace + max(attn_workspace, mlp_workspace)
     required_gpu_bytes += gpu_working_space_bytes
+
 
     return required_gpu_bytes
 
@@ -371,9 +386,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
 
     #target_tokens_per_round = max(max_seq_len, min(target_tokens_per_round, full_save_tokens_per_round))
-    target_tokens_per_round = max(max_seq_len, target_tokens_per_round)
 
-    if target_tokens_per_round > min_save_tokens_per_round:
+    ## ensure we have enough memory to minimally save activations
+    target_tokens_per_round = min(min_save_tokens_per_round, target_tokens_per_round)
+
+    if target_tokens_per_round < max_seq_len:
         raise ValueError(f"Error: Could not find a valid configuration for seq len {max_seq_len}; estimated max tokens with min activations to be {min_save_tokens_per_round}")
 
     ### cannot exceed max tokens per round determined by memory constraints

@@ -142,6 +142,33 @@ def get_full_act_slot_size_bytes(model_dims, chunk_size):
 
         return attn_norm_rstd_size + ffn_norm_rstd_size + x_inp_size + xk_size + xv_size + x_router_size + expert_counts_size + router_weights_size + chosen_experts_size + scattered_router_weights_size + attn_result_size + softmax_lse_size + xq_size + xo_size + x_up_size + x_up_shared_size
 
+def get_min_act_slot_size_bytes(model_dims, chunk_size):
+
+        d_model = model_dims["d_model"]
+        n_heads = model_dims["n_heads"]
+        n_kv_heads = model_dims["n_kv_heads"]
+        head_dim = model_dims["head_dim"]
+        expert_dim = model_dims["expert_dim"]
+        num_shared_experts = model_dims["num_shared_experts"]
+        num_routed_experts = model_dims["num_routed_experts"]
+        top_k = model_dims["top_k"]
+
+        act_dtype = get_torch_dtype(model_dims["datatypes"]["residual"])
+        router_dtype = get_torch_dtype(model_dims["datatypes"]["router"])
+
+        attn_norm_rstd_size = chunk_size * torch.float32.itemsize
+        ffn_norm_rstd_size = chunk_size * torch.float32.itemsize
+        x_inp_size = chunk_size * d_model * act_dtype.itemsize
+        xk_size = chunk_size * n_kv_heads * head_dim * act_dtype.itemsize
+        xv_size = chunk_size * n_kv_heads * head_dim * act_dtype.itemsize
+        x_router_size = chunk_size * num_routed_experts * router_dtype.itemsize
+        expert_counts_size = num_routed_experts * torch.int32.itemsize
+        router_weights_size = chunk_size * top_k * router_dtype.itemsize
+        chosen_experts_size = chunk_size * top_k * torch.int32.itemsize
+        scattered_router_weights_size = chunk_size * top_k * router_dtype.itemsize
+
+        return attn_norm_rstd_size + ffn_norm_rstd_size + x_inp_size + xk_size + xv_size + x_router_size + expert_counts_size + router_weights_size + chosen_experts_size + scattered_router_weights_size
+
 
 ### Only for forward pass
 def get_layer_matmul_flops_per_token(model_dims):
