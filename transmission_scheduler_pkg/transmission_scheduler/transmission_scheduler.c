@@ -42,11 +42,11 @@ static double solve_scalar(int T, int N, int k, const double *compute,
     int d = dead_ticks;
 
     // 2. The Hard Buffer Constraint
-    // Task i must finish before Task i+N arrives.
-    // If it finishes later, the buffer overflows -> INVALID.
-    if (i + N < T) {
-      if (arrivals[i + N] < d) {
-        d = arrivals[i + N];
+    // Task i transfer must complete by the time Task i+N-1 finishes compute.
+    // If it finishes later, there is idle time waiting for prior buffer to be released -> INVALID.
+    if (i + N - 1 < T && i + N - 1 >= 0) {
+      if (arrivals[i + N - 1] < d) {
+        d = arrivals[i + N - 1];
       }
     }
 
@@ -264,11 +264,11 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
     int d = dead_ticks;
 
     // 2. The Hard Buffer Constraint
-    // Task i must finish before Task i+N arrives.
-    // If it finishes later, the buffer overflows -> INVALID.
-    if (i + N < T) {
-      if (arrivals[i + N] < d) {
-        d = arrivals[i + N];
+    // Task i transfer must complete by the time Task i+N-1 finishes compute.
+    // If it finishes later, there is idle time waiting for prior buffer to be released -> INVALID.
+    if (i + N - 1 < T && i + N - 1 >= 0) {
+      if (arrivals[i + N - 1] < d) {
+        d = arrivals[i + N - 1];
       }
     }
 
