@@ -635,6 +635,9 @@ class ActiveModel:
             ##raise Exception("No valid schedule found for saved activations, idle time is forced")
             key_saved_act_choices = np.zeros(total_chunks * len(self.local_layer_ids) - self.n_gpu_act_slots, dtype=np.int32)
         else:
+
+            ## force the last act slots to be saved at the highest level
+            saved_act_choices[-self.n_gpu_act_slots:] = num_saved_activation_levels - 1
             
             ## should be same as returned value "optional_recompute_time_avoided", but tiny (i.e. 1e-13) numeric differences so returning consisent number based on numpy
             ## saved_act_choices returns length total_chunks * len(self.local_layer_ids) vector, though last self.n_gpu_act_slots should be value of num_saved_activation_levels - 1
