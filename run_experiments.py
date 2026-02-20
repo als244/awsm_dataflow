@@ -52,7 +52,7 @@ SWEEP_PARAMS = {
     "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B"],
     #"model_choice":   ["llama3_8B", "dense_15B"],
     #"force_saved_act_level": [None, 0, 3],
-    "force_saved_act_level": [None],
+    "force_saved_act_level": [None, 0, 3],
 }
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ SWEEP_PARAMS = {
 # ---------------------------------------------------------------------------
 
 FIXED_PARAMS = {
-    "max_steps": 5,
+    "max_steps": 3,
     ### can use all available host memory
     "max_host_mem_gb": 0
 }
