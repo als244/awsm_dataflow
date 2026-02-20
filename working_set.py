@@ -506,7 +506,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         ### At this point we can equally divide remaining GPU memory to know how many complete
         ### layers (weights + grad + activations) we can store, however we will need to account
         ### for chunk size which may increase context window size + be a factor of addition memory workspace
-        additional_full_compute_layer_size_bytes = get_full_compute_layer_size_bytes(model_dims, chunk_size, backbone_sizes)
+        ### activation size scales linearly with total number of tokens regardless of chunking (chunking impacts baseline act workspace)
+        additional_full_compute_layer_size_bytes = get_full_compute_layer_size_bytes(model_dims, chunk_size * target_num_chunks, backbone_sizes)
 
         ### this is on top of the 1 full layer we have as part of baseline
         additional_complete_layers_est = int(min(num_local_layers - 1, cur_remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes))
