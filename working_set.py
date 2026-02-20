@@ -187,7 +187,8 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     ## Working space during execution
 
     ## during backwards to get dX_attn_up and dQ and local dK,dV
-    attn_workspace = chunk_size * (2 * model_dims["n_heads"] * model_dims["head_dim"] + 2 * model_dims["n_kv_heads"] * model_dims["head_dim"]) * residual_dtype.itemsize
+    ## flash workspace requires copies of dQ, dK, dV for accumulation
+    attn_workspace = chunk_size * (4 * model_dims["n_heads"] * model_dims["head_dim"] + 4 * model_dims["n_kv_heads"] * model_dims["head_dim"]) * residual_dtype.itemsize
     mlp_workspace = 0
     if model_dims["num_routed_experts"] > 0:
         ### for attn norm output, scattered X and scattered upstream
