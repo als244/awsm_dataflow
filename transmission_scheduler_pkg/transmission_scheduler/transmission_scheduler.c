@@ -6,10 +6,16 @@
 #include <string.h>
 
 // --- CONFIGURATION ---
-// 1 tick = 1 ms.
-// Buffer covers ~65 seconds.
-#define TIME_SCALE 1
-#define BUF_SIZE 65536
+// 1 tick = 1 ms., 10 ticks = 100 us
+// Buffer covers ~100 seconds.
+
+// Solver is faster when BUF_SIZE fits in cache (e.g. 64KB), but then 
+// to achieve 100us precision we are limited in duration of scheduled tasks.
+// This config should take solver be on order of hundreds of microseconds, 
+// could also do something like TIME_SCALE = 1 and BUF_SIZE = 65536 for order of 
+// magnitude faster solving speed
+#define TIME_SCALE 10
+#define BUF_SIZE 1048576
 #define INF_NEG -1.0e18
 
 typedef struct {
