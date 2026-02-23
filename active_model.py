@@ -1770,11 +1770,9 @@ class ActiveModel:
                 self.opt_inbound_events[layer_id] = None
 
             #self.compute_stream.wait_stream(self.outbound_stream)
-            
-            if k_ind < len(self.local_layer_ids) - 1:
-                cur_weight_idx = (cur_weight_idx + 1) % self.n_gpu_model_layers
-                cur_grad_idx = (cur_grad_idx + 1) % self.n_gpu_grads
-                cur_opt_idx = (cur_opt_idx + 1) % self.n_gpu_opt_layers
+            cur_weight_idx = (cur_weight_idx + 1) % self.n_gpu_model_layers
+            cur_grad_idx = (cur_grad_idx + 1) % self.n_gpu_grads
+            cur_opt_idx = (cur_opt_idx + 1) % self.n_gpu_opt_layers
 
             
         ### Reload early layers to get ready for next fwd_bwd...
