@@ -1700,7 +1700,7 @@ class ActiveModel:
 
         weight_idx_tracker = {}
         for i in range(self.n_gpu_model_layers):
-            weight_idx_tracker[i] = (cur_weight_idx + i) % self.n_gpu_model_layers
+            weight_idx_tracker[self.local_layer_ids[i]] = (cur_weight_idx + i) % self.n_gpu_model_layers
 
         ### the first n_gpu_model_layers and n_gpu_grads should be available...
         for k_ind in range(len(self.local_layer_ids)):
@@ -1744,8 +1744,10 @@ class ActiveModel:
                 self.weight_inbound_events[next_weight_layer_id] = self.inbound_stream.record_event()
                 self.weight_inbound_events[layer_id] = None
                 ## indicate this next_weight_layer_id will be at the curretn weight idx
-                weight_idx_tracker[next_weight_layer_id] = cur_weight_idx  
-                    
+                weight_idx_tracker[next_weight_layer_id] = cur_weight_idx
+                ### will not have this layer in final set
+                del weight_idx_tracker[layer_id]
+                
                 
             if k_ind + self.n_gpu_grads < len(self.local_layer_ids):
                 next_grad_layer_id = self.local_layer_ids[k_ind + self.n_gpu_grads]
