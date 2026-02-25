@@ -47,7 +47,7 @@ SEQ_CONFIGS: list[tuple[int, int]] = [
 SWEEP_PARAMS = {
     # SEQ_CONFIGS is handled separately below — do not add seq_len or
     # seqs_per_step here, they will be injected automatically.
-    "max_gpu_mem_gb": [16, 20, 24, 32, 40, 50, 60, 70, 80],
+    "max_gpu_mem_gib": [16, 20, 24, 32, 40, 50, 60, 70, 80],
     # "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B", "qwen3_32B", "qwen3_30Bx3B"],
     "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B"],
     #"model_choice":   ["llama3_8B", "dense_15B"],
@@ -63,7 +63,7 @@ SWEEP_PARAMS = {
 FIXED_PARAMS = {
     "max_steps": 3,
     ### can use all available host memory
-    "max_host_mem_gb": 0
+    "max_host_mem_gib": 0
 }
 
 # ---------------------------------------------------------------------------

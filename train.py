@@ -16,8 +16,8 @@ from dashboard.dashboard_logger import DashboardLogger
 
 all_model_dims = json.load(open("model_dims.json"))
 
-MAX_GPU_MEM_GB = None
-MAX_HOST_MEM_GB = None
+MAX_GPU_MEM_GIB = None
+MAX_HOST_MEM_GIB = None
 
 FORCE_SAVED_ACT_LEVEL = None
 
@@ -27,7 +27,7 @@ MAX_STEPS = None
 TO_SAVE_ERROR = True
 
 DEVICE_ID = 0
-MAX_TOKENS_PER_STEP = 524288
+MAX_TOKENS_PER_STEP = 524288 * 4
 MIN_CHUNK_SIZE = None
 MIN_SEQ_LEN = 256
 MAX_SEQ_LEN = 2048
@@ -36,11 +36,11 @@ SAVE_FINAL = False
 
 LOSS_THRESHOLD = None
 
-MODEL_CHOICE = "llama3_8B"
+MODEL_CHOICE = "nanogpt_124M"
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
-RUN_NAME = f"{MODEL_CHOICE}_gbs_{MAX_TOKENS_PER_STEP}_minchunk_{MIN_CHUNK_SIZE}_maxseq_{MAX_SEQ_LEN}_maxgpumem_{MAX_GPU_MEM_GB}_maxhostmem_{MAX_HOST_MEM_GB}_usemuon_{USE_MUON}"
+RUN_NAME = f"{MODEL_CHOICE}_gbs_{MAX_TOKENS_PER_STEP}_minchunk_{MIN_CHUNK_SIZE}_maxseq_{MAX_SEQ_LEN}_maxgpumem_{MAX_GPU_MEM_GIB}_maxhostmem_{MAX_HOST_MEM_GIB}_usemuon_{USE_MUON}"
 
 model_dims = all_model_dims[MODEL_CHOICE]
 
@@ -72,7 +72,7 @@ local_device = device
 
 model_hyperparams = {
     "rms_norm_eps": 1e-5,
-    "position_angles": torch.tensor([500000.0], dtype=torch.float32, device=device),
+    "position_angles": torch.tensor([10000.0], dtype=torch.float32, device=device),
     "window_size_left": -1,
     "window_size_right": -1,
     "load_bal_coeff": 0.01
@@ -107,13 +107,13 @@ est_total_steps = TOTAL_TOKENS / MAX_TOKENS_PER_STEP
 
 opt_hyperparams = {
     "lr": 0,
-    "max_lr": 6e-4,
-    "warmup_pct": 0.1,
+    "max_lr": 6e-3,
+    "warmup_pct": 0.05,
     "cooldown_pct": 0.2,
     "final_lr": 1e-5,
     "est_total_steps": est_total_steps,
-    "beta1": 0.9,
-    "beta2": 0.95,
+    "beta1": 0.95,
+    "beta2": 0.98,
     "eps": 1e-8,
     "weight_decay": 0,
     "step_num": 0,
@@ -131,9 +131,9 @@ print("\n\n\n")
 MAX_GPU_MEM_BYTES = None
 MAX_HOST_MEM_BYTES = None
 
-if MAX_GPU_MEM_GB is not None:
+if MAX_GPU_MEM_GIB is not None:
     MAX_GPU_MEM_BYTES = MAX_GPU_MEM_GB * 1024 * 1024 * 1024
-if MAX_HOST_MEM_GB is not None:
+if MAX_HOST_MEM_GIB is not None:
     MAX_HOST_MEM_BYTES = MAX_HOST_MEM_GB * 1024 * 1024 * 1024
 
 
@@ -159,7 +159,7 @@ local_config = {
 
 
 dashboard = DashboardLogger(
-    url="http://localhost:8501",
+    url="http://localhost:8800",
     run_id=RUN_NAME,
     run_name=f"{RUN_NAME}",
     model=MODEL_CHOICE,

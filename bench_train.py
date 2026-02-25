@@ -23,8 +23,8 @@ parser = argparse.ArgumentParser(description="AdaWS Transformer Training Benchma
 parser.add_argument("--seq_len",                   type=int,   default=8192,          help="Sequence length")
 parser.add_argument("--seqs_per_step",             type=int,   default=64,            help="Sequences per step")
 parser.add_argument("--max_steps",                 type=int,   default=10,            help="Max training steps (0 = unlimited)")
-parser.add_argument("--max_gpu_mem_gb",            type=float, default=30,          help="Max GPU memory in GB (0 = detect available capacity)")
-parser.add_argument("--max_host_mem_gb",           type=float, default=120,          help="Max host memory in GB (0 = detect available capacity)")
+parser.add_argument("--max_gpu_mem_gib",            type=float, default=0,          help="Max GPU memory in GiB (0 = detect available capacity)")
+parser.add_argument("--max_host_mem_gib",           type=float, default=0,          help="Max host memory in GiB (0 = detect available capacity)")
 parser.add_argument("--min_chunk_size",            type=int,   default=None,          help="Minimum chunk size")
 parser.add_argument("--max_tokens_per_round_limit",type=int,   default=None,          help="Max tokens per round limit")
 parser.add_argument("--use_muon",                  type=lambda x: x.lower() != 'false', default=True, help="Use Muon optimizer (default: True, pass --use_muon false to disable)")
@@ -37,8 +37,8 @@ args = parser.parse_args()
 SEQ_LEN                    = args.seq_len
 SEQS_PER_STEP              = args.seqs_per_step
 MAX_STEPS                  = args.max_steps if args.max_steps != 0 else None
-MAX_GPU_MEM_GB             = args.max_gpu_mem_gb if args.max_gpu_mem_gb != 0 else None
-MAX_HOST_MEM_GB            = args.max_host_mem_gb if args.max_host_mem_gb != 0 else None
+MAX_GPU_MEM_GIB            = args.max_gpu_mem_gib if args.max_gpu_mem_gib != 0 else None
+MAX_HOST_MEM_GIB           = args.max_host_mem_gib if args.max_host_mem_gib != 0 else None
 USE_MUON                   = args.use_muon
 MODEL_CHOICE               = args.model_choice
 RUN_NAME                   = args.run_name
@@ -132,8 +132,8 @@ train_seq_pool.add_random_sequences(MAX_STEPS * SEQS_PER_STEP if MAX_STEPS is no
 # Memory limits
 # ---------------------------------------------------------------------------
 
-max_gpu_mem_bytes  = int(MAX_GPU_MEM_GB  * (1 << 30)) if MAX_GPU_MEM_GB  is not None else None
-max_host_mem_bytes = int(MAX_HOST_MEM_GB * (1 << 30)) if MAX_HOST_MEM_GB is not None else None
+max_gpu_mem_bytes  = int(MAX_GPU_MEM_GIB  * (1 << 30)) if MAX_GPU_MEM_GIB  is not None else None
+max_host_mem_bytes = int(MAX_HOST_MEM_GIB * (1 << 30)) if MAX_HOST_MEM_GIB is not None else None
 
 # ---------------------------------------------------------------------------
 # Working set config
