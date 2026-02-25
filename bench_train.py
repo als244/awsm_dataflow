@@ -175,7 +175,7 @@ local_config = {
 
 
 dashboard = DashboardLogger(
-    url="http://localhost:8501",
+    url="http://localhost:8200",
     run_id=RUN_NAME,
     run_name=f"{RUN_NAME}",
     model=MODEL_CHOICE,
@@ -327,10 +327,14 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     step_flops += get_opt_flops(model_dims, is_muon=USE_MUON)
     total_flops_cost += step_flops
     tflops_per_sec   = (step_flops / step_duration) / 1e12
+    
+    max_alloc = torch.cuda.max_memory_allocated()
+    max_reserve = torch.cuda.max_memory_reserved() 
+
 
     print(
         f"\n\tStep Time: {step_duration:.2f}sec\n"
-        f"\tThroughput --- {tokens_per_sec:.2f} Tokens/sec, {tflops_per_sec:.2f} Effective TFLOPS\n\n"
+        f"\tThroughput --- {tokens_per_sec:.2f} Tokens/sec, {tflops_per_sec:.2f} Effective TFLOPS, Max Alloc/Reserve {max_alloc / (1 << 30):.2f}/{max_reserve / (1 << 30):.2f} GiB\n\n"
         f"Smoothed Loss: {loss_smoothed:.4f}\n"
         f"\tOverall Tokens Processed: {total_tokens / 1e6:.2f}M, "
         f"Overall Sequences Processed: {total_seqs / 1e3:.2f}k, "
@@ -351,8 +355,8 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
         "total_tokens_per_sec":   total_tokens / (end_time - train_start_time),
     })
 
-    cur_step_stats["max_memory_allocated"] = torch.cuda.max_memory_allocated()
-    cur_step_stats["max_memory_reserved"] = torch.cuda.max_memory_reserved()
+    cur_step_stats["max_memory_allocated"] = max_alloc
+    cur_step_stats["max_memory_reserved"] = max_reserve
 
     step_stats[step_num] = cur_step_stats
     dashboard.log(cur_step_stats)
