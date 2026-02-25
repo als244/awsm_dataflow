@@ -691,22 +691,22 @@ class ActiveModel:
         ### very long context)
         
         if verbose:
-            print(f"Initial Total Saved Bytes: {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB", flush=True)
+            print(f"Initial Total Saved Bytes: {np.sum(key_saved_act_chosen_sizes) / (1 << 30):.2f}GiB", flush=True)
         
 
         if np.sum(key_saved_act_chosen_sizes) > self.cpu_act_buffer_size:
             
             if verbose:
-                print(f"Not enough host act buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB, so will now demote saved activations", flush=True)
+                print(f"Not enough host act buffer space {np.sum(key_saved_act_chosen_sizes) / (1 << 30):.2f}GiB vs. {self.cpu_act_buffer_size / (1 << 30):.2f}GiB, so will now demote saved activations", flush=True)
 
             ## check if all minimally saved, then major errrory and we need to reduce tokens per round
             if np.sum(key_saved_act_choices) == 0:
-                raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
+                raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / (1 << 30):.2f}GiB vs. {self.cpu_act_buffer_size / (1 << 30):.2f}GiB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
 
             required_demotion_bytes = np.sum(key_saved_act_chosen_sizes) - self.cpu_act_buffer_size
 
             if verbose:
-                print(f"Wanting to save more activations {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / 1e9:.2f}GB; demoting levels until satisfied. Need to demote {required_demotion_bytes} bytes", flush=True)
+                print(f"Wanting to save more activations {np.sum(key_saved_act_chosen_sizes) / (1 << 30):.2f}GiB but constrained, by host memory act buffer capacity {self.cpu_act_buffer_size / (1 << 30):.2f}GiB; demoting levels until satisfied. Need to demote {required_demotion_bytes} bytes", flush=True)
 
             demotion_bytes = 0
             satisfied = False
@@ -758,7 +758,7 @@ class ActiveModel:
                 if not satisfied:
                     ## if we reach here then we fully demoted everything and still need more space
                     ## so report same error as we started with
-                    raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / 1e9:.2f}GB vs. {self.cpu_act_buffer_size / 1e9:.2f}GB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
+                    raise Exception(f"Minimally saving all activations, but still not enough host buffer space {np.sum(key_saved_act_chosen_sizes) / (1 << 30):.2f}GiB vs. {self.cpu_act_buffer_size / (1 << 30):.2f}GiB. NEED to reconfigure working_set and reduce max tokens per round below current value of {self.max_total_round_tokens}. Must be below current error of {total_round_tokens} tokens per round") 
 
     
             ### Now: "key_saved_act_choices" contains the final choices with valid config
@@ -770,7 +770,7 @@ class ActiveModel:
         assert saved_host_bytes <= self.cpu_act_buffer_size
         
         if verbose:
-            print(f"Saving a total of {saved_host_bytes / 1e9:.2f}GB of activations in host memory.\nHost Act Save Level Breakdown:", flush=True)
+            print(f"Saving a total of {saved_host_bytes / (1 << 30):.2f}GiB of activations in host memory.\nHost Act Save Level Breakdown:", flush=True)
             for i in range(num_saved_activation_levels - 1, -1, -1):
                 num_combos = len(np.where(key_saved_act_choices == i)[0])
                 print(f"\tLevel {i}: {num_combos} (layer, chunk) combos", flush=True)
