@@ -564,6 +564,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         if best_option["n_gpu_layers"] == 1 and option["n_gpu_layers"] > 1:
             best_option = option
 
+        if best_option["n_gpu_grad_layers"] == 1 and option["n_gpu_grad_layers"] > 1:
+            best_option = option
+
        
 
 
