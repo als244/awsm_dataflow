@@ -33,21 +33,21 @@ from datetime import datetime
 # maintain a target token budget per step.
 SEQ_CONFIGS: list[tuple[int, int]] = [
     # (seq_len, seqs_per_step)
-    (1024, 512),
-    # (2048, 256),
-    # (4096, 128),
-    (8192, 64),
-    # (16384, 32),
-    # (32768, 16),
-    (65536, 8),
-    # (131072, 4),
+    (1024, 128),
+    (2048, 64),
+    (4096, 32),
+    (8192, 16),
+    (16384, 8),
+    (32768, 4),
+    (65536, 2),
+    (131072, 1),
     # (262144, 2),
 ]
 
 SWEEP_PARAMS = {
     # SEQ_CONFIGS is handled separately below — do not add seq_len or
     # seqs_per_step here, they will be injected automatically.
-    "max_gpu_mem_gib": [16, 20, 24, 32, 40, 50, 60, 70, 80],
+    "max_gpu_mem_gib": [12, 14, 16, 18, 20, 22, 24, 26, 28, 30],
     # "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B", "qwen3_32B", "qwen3_30Bx3B"],
     "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B"],
     #"model_choice":   ["llama3_8B", "dense_15B"],
@@ -90,21 +90,21 @@ def _fmt_val(val) -> str:
 def params_to_run_name(combo: dict) -> str:
     """Build a run name from a parameter combo dict.
 
-    Format: {model_choice}_seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgb_{max_gpu_mem_gb}_maxhostmemgb_{max_host_mem_gb}_forcesavedactlevel_{force_saved_act_level}
+    Format: {model_choice}_seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgib_{max_gpu_mem_gib}_maxhostmemgib_{max_host_mem_gib}_forcesavedactlevel_{force_saved_act_level}
     """
     model_choice          = _fmt_val(combo.get("model_choice"))
     seq_len               = _fmt_val(combo.get("seq_len"))
     seqs_per_step         = _fmt_val(combo.get("seqs_per_step"))
-    max_gpu_mem_gb        = _fmt_val(combo.get("max_gpu_mem_gb"))
-    max_host_mem_gb       = _fmt_val(combo.get("max_host_mem_gb"))
+    max_gpu_mem_gib        = _fmt_val(combo.get("max_gpu_mem_gib"))
+    max_host_mem_gib       = _fmt_val(combo.get("max_host_mem_gib"))
     force_saved_act_level = _fmt_val(combo.get("force_saved_act_level"))
 
     return (
         f"{model_choice}"
         f"_seqlen_{seq_len}"
         f"_seqsperstep_{seqs_per_step}"
-        f"_maxgpumemgb_{max_gpu_mem_gb}"
-        f"_maxhostmemgb_{max_host_mem_gb}"
+        f"_maxgpumemgib_{max_gpu_mem_gib}"
+        f"_maxhostmemgib_{max_host_mem_gib}"
         f"_forcesavedactlevel_{force_saved_act_level}"
     )
 
@@ -112,13 +112,13 @@ def params_to_run_name(combo: dict) -> str:
 def params_to_log_path(combo: dict) -> str:
     """Build the log file path from a parameter combo dict.
 
-    Format: experiment_logs/{model_choice}/seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgb_{max_gpu_mem_gb}_maxhostmemgb_{max_host_mem_gb}_forcesavedactlevel_{force_saved_act_level}.log
+    Format: experiment_logs/{model_choice}/seqlen_{seq_len}_seqsperstep_{seqs_per_step}_maxgpumemgib_{max_gpu_mem_gib}_maxhostmemgib_{max_host_mem_gib}_forcesavedactlevel_{force_saved_act_level}.log
     """
     model_choice          = _fmt_val(combo.get("model_choice"))
     seq_len               = _fmt_val(combo.get("seq_len"))
     seqs_per_step         = _fmt_val(combo.get("seqs_per_step"))
-    max_gpu_mem_gb        = _fmt_val(combo.get("max_gpu_mem_gb"))
-    max_host_mem_gb       = _fmt_val(combo.get("max_host_mem_gb"))
+    max_gpu_mem_gib        = _fmt_val(combo.get("max_gpu_mem_gib"))
+    max_host_mem_gib       = _fmt_val(combo.get("max_host_mem_gib"))
     force_saved_act_level = _fmt_val(combo.get("force_saved_act_level"))
 
     subdir = os.path.join(
@@ -128,8 +128,8 @@ def params_to_log_path(combo: dict) -> str:
     filename = (
         f"seqlen_{seq_len}"
         f"_seqsperstep_{seqs_per_step}"
-        f"_maxgpumemgb_{max_gpu_mem_gb}"
-        f"_maxhostmemgb_{max_host_mem_gb}"
+        f"_maxgpumemgib_{max_gpu_mem_gib}"
+        f"_maxhostmemgib_{max_host_mem_gib}"
         f"_forcesavedactlevel_{force_saved_act_level}"
         f".log"
     )
