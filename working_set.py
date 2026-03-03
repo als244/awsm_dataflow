@@ -211,7 +211,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=1 * (1 << 30), leeway_host_mem_bytes=1 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=1 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
@@ -427,7 +427,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     if verbose:
         print(f"[Working Set Log] Determined Initial Target Tokens Per Round Est: {target_tokens_per_round}")
 
-    rounded_target_tokens_per_round = round_to_nearest_divisor(target_tokens_per_round, max_global_batch_tokens, direction="up")
+    rounded_target_tokens_per_round = round_to_nearest_divisor(target_tokens_per_round, max_global_batch_tokens)
 
     if rounded_target_tokens_per_round > max_tokens_per_round:
         
@@ -482,6 +482,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     valid_options = []
 
     print(f"[Working Set Log] Chunk Size Options: {chunk_size_options}")
+    print(f"[Working Set Log] Before deciding chunk size, observe remaining gpu mem bytes as: {remaining_gpu_mem_bytes}")
 
     for chunk_size in chunk_size_options:
 
@@ -489,14 +490,14 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         cur_remaining_gpu_mem_bytes = remaining_gpu_mem_bytes
         
         if max_chunk_size is not None and chunk_size > max_chunk_size:
-            print(f"[Working Set Log] Chunk size {chunk_size} exceeds max chunk size {max_chunk_size}, skipping")
+            #print(f"[Working Set Log] Chunk size {chunk_size} exceeds max chunk size {max_chunk_size}, skipping")
             continue
 
         ### at this point we break and will choose first valid chunk size
         if (min_chunk_size is not None and chunk_size < min_chunk_size):
             break
 
-        target_num_chunks = math.ceil(target_tokens_per_round / chunk_size)
+        target_num_chunks = target_tokens_per_round // chunk_size
 
         ### this includes transition table, context window, and activation workspace
         baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chunk_size, target_num_chunks, training_config=training_config)
@@ -504,9 +505,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         cur_remaining_gpu_mem_bytes -= baseline_act_gpu_memory
 
     
-
         ### first try to fill up the 1st layer worth of act slots
         full_act_slot_size_bytes = get_full_act_slot_size_bytes(model_dims, chunk_size)
+
 
         first_layer_act_slots = min(target_num_chunks, cur_remaining_gpu_mem_bytes // full_act_slot_size_bytes)
 
@@ -517,7 +518,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         gpu_act_workspace_size_bytes = first_layer_act_slots * full_act_slot_size_bytes
 
         cur_remaining_gpu_mem_bytes -= gpu_act_workspace_size_bytes
-  
+
 
         ### now determine how many complete model layers we should have
         ### At this point we can equally divide remaining GPU memory to know how many complete
@@ -537,7 +538,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         leftover_post_complete_layers_bytes = cur_remaining_gpu_mem_bytes - complete_layers_size_est
 
         ### baseline for act workspace
-        gpu_act_workspace_size_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, chunk_size)
+        gpu_act_workspace_size_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, chunk_size * target_num_chunks)
         
         if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
             gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
@@ -611,6 +612,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     n_gpu_opt_layers = int(min(num_local_layers, gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"]))
     
     endpoint_bytes = endpoint_sizes["embed_bytes"] + endpoint_sizes["head_bytes"]
+
+    baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, target_chunk_size, target_num_chunks, training_config=training_config)
+
     est_total_gpu_bytes = baseline_act_gpu_memory + gpu_act_workspace_size_bytes + backbone_sizes["weight_bytes"] * n_gpu_layers + backbone_sizes["grad_bytes"] * n_gpu_grad_layers + endpoint_bytes
 
     assert est_total_gpu_bytes <= max_gpu_mem_bytes
@@ -651,6 +655,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         "max_chunk_size": target_chunk_size,
         "max_seq_len": max_seq_len,
         "target_round_tokens": target_chunk_size * target_num_chunks,
+        "target_num_rounds": max_global_batch_tokens // (target_chunk_size * target_num_chunks),
         "max_total_round_tokens": max_tokens_per_round,
         "host_act_buffer_size": int(host_act_buffer_size_bytes),
         "gpu_act_buffer_size": int(gpu_act_buffer_size_bytes),
