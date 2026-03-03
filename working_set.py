@@ -425,7 +425,14 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     target_tokens_per_round = min(max_global_batch_tokens, target_tokens_per_round)
 
     if verbose:
-         print(f"[Working Set Log] Determined Initial Target Tokens Per Round Est: {target_tokens_per_round}")
+        print(f"[Working Set Log] Determined Initial Target Tokens Per Round Est: {target_tokens_per_round}")
+
+    rounded_target_tokens_per_round = round_to_nearest_divisor(target_tokens_per_round, max_global_batch_tokens, direction="up")
+
+    if verbose:
+        print(f"[Working Set Log] After rounding to nearest divisor of global batch size of {max_global_batch_tokens}, Target Tokens Per Round Est: {rounded_target_tokens_per_round}")
+
+    target_tokens_per_round = rounded_target_tokens_per_round
 
 
     ### get estimate for minimum chunk size based on MLP (important for MoE)
