@@ -26,7 +26,6 @@ parser.add_argument("--max_steps",                 type=int,   default=10,      
 parser.add_argument("--max_gpu_mem_gib",            type=float, default=0,          help="Max GPU memory in GiB (0 = detect available capacity)")
 parser.add_argument("--max_host_mem_gib",           type=float, default=0,          help="Max host memory in GiB (0 = detect available capacity)")
 parser.add_argument("--min_chunk_size",            type=int,   default=None,          help="Minimum chunk size")
-parser.add_argument("--max_chunk_size",            type=int,   default=None,          help="Maximum chunk size")
 parser.add_argument("--max_tokens_per_round_limit",type=int,   default=None,          help="Max tokens per round limit")
 parser.add_argument("--use_muon",                  type=lambda x: x.lower() != 'false', default=True, help="Use Muon optimizer (default: True, pass --use_muon false to disable)")
 parser.add_argument("--model_choice",              type=str,   default="llama3_8B",   help="Model choice key from model_dims.json")
@@ -48,7 +47,6 @@ DEVICE_ID                  = args.device_id
 ### hidden internal args from README
 FORCE_SAVED_ACT_LEVEL      = args.force_saved_act_level
 MIN_CHUNK_SIZE             = args.min_chunk_size
-MAX_CHUNK_SIZE             = args.max_chunk_size
 MAX_TOKENS_PER_ROUND_LIMIT = args.max_tokens_per_round_limit
 
 torch.cuda.set_device(DEVICE_ID)
@@ -150,7 +148,6 @@ working_set_config, chosen_hardware_env = determine_working_set_config(
     verbose=True,
     fixed_seq_len=True,
     min_chunk_size=MIN_CHUNK_SIZE,
-    max_chunk_size=MAX_CHUNK_SIZE,
     max_tokens_per_round_limit=MAX_TOKENS_PER_ROUND_LIMIT,
     max_gpu_mem_bytes=max_gpu_mem_bytes,
     max_host_mem_bytes=max_host_mem_bytes,
@@ -178,7 +175,7 @@ local_config = {
 
 
 dashboard = DashboardLogger(
-    url="http://localhost:8100",
+    url="http://localhost:8200",
     run_id=RUN_NAME,
     run_name=f"{RUN_NAME}",
     model=MODEL_CHOICE,
@@ -266,9 +263,6 @@ train_start_time  = time.time()
 SMOOTH_DECAY      = 0.95
 SAVE_STEPS        = []
 
-
-per_step_tokens = working_set_config["target_num_rounds"] * working_set_config["target_round_tokens"]
-
 while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     opt_hyperparams["step_num"] += 1
     step_num = opt_hyperparams["step_num"]
@@ -290,7 +284,7 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     cur_step_stats["step_num"] = step_num
     cur_step_stats["lr"] = opt_hyperparams["lr"]
 
-    train_seqs = train_seq_pool.get_sequences(max_token_count=per_step_tokens)
+    train_seqs = train_seq_pool.get_sequences(max_token_count=MAX_TOKENS_PER_STEP)
 
     if len(train_seqs) == 0:
         print("No more sequences...!", flush=True)
