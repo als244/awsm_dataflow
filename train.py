@@ -16,6 +16,8 @@ from dashboard.dashboard_logger import DashboardLogger
 
 all_model_dims = json.load(open("model_dims.json"))
 
+DASHBOARD_PORT = 8300
+
 MAX_GPU_MEM_GIB = None
 MAX_HOST_MEM_GIB = None
 
@@ -163,7 +165,7 @@ local_config = {
 
 
 dashboard = DashboardLogger(
-    url="http://localhost:8300",
+    url=f"http://localhost:{DASHBOARD_PORT}",
     run_id=RUN_NAME,
     run_name=f"{RUN_NAME}",
     model=MODEL_CHOICE,

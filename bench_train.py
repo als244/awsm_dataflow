@@ -32,6 +32,7 @@ parser.add_argument("--model_choice",              type=str,   default="llama3_8
 parser.add_argument("--run_name",                  type=str,   default="default_run", help="Run name")
 parser.add_argument("--force_saved_act_level",     type=int,   default=None,          help="Force saved activation level")
 parser.add_argument("--device_id",                 type=int,   default=0,             help="Device ID")
+parser.add_argument("--dashboard_port",            type=int,   default=8300,          help="Dashboard port")
 args = parser.parse_args()
 
 SEQ_LEN                    = args.seq_len
@@ -43,6 +44,7 @@ USE_MUON                   = args.use_muon
 MODEL_CHOICE               = args.model_choice
 RUN_NAME                   = args.run_name
 DEVICE_ID                  = args.device_id
+DASHBOARD_PORT             = args.dashboard_port
 
 ### hidden internal args from README
 FORCE_SAVED_ACT_LEVEL      = args.force_saved_act_level
@@ -175,19 +177,19 @@ local_config = {
 
 
 dashboard = DashboardLogger(
-    url="http://localhost:8200",
+    url=f"http://localhost:{DASHBOARD_PORT}",
     run_id=RUN_NAME,
     run_name=f"{RUN_NAME}",
     model=MODEL_CHOICE,
     run_dir=SAVE_MODEL_PATH,
     config={
+        "working_set_config": working_set_config,
+        "init_model_path": INIT_MODEL_PATH,
         "model_dims": model_dims,
         "training_config": training_config,
         "model_hyperparams": model_hyperparams,
         "opt_hyperparams": opt_hyperparams,
-        "init_model_path": INIT_MODEL_PATH,
         "local_config": local_config,
-        "working_set_config": working_set_config,
         "chosen_hardware_env": chosen_hardware_env,
     }
 )
