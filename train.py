@@ -169,13 +169,13 @@ dashboard = DashboardLogger(
     model=MODEL_CHOICE,
     run_dir=SAVE_MODEL_PATH,
     config={
+        "working_set_config": working_set_config,
+        "init_model_path": INIT_MODEL_PATH,
         "model_dims": model_dims,
         "training_config": training_config,
         "model_hyperparams": model_hyperparams,
         "opt_hyperparams": opt_hyperparams,
-        "init_model_path": INIT_MODEL_PATH,
         "local_config": local_config,
-        "working_set_config": working_set_config,
         "chosen_hardware_env": chosen_hardware_env,
     }
 )
