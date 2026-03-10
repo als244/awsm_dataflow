@@ -27,7 +27,7 @@ MAX_STEPS = None
 TO_SAVE_ERROR = True
 
 DEVICE_ID = 0
-MAX_TOKENS_PER_STEP = 524288 * 4
+MAX_TOKENS_PER_STEP = 524288
 MIN_CHUNK_SIZE = None
 MIN_SEQ_LEN = 256
 MAX_SEQ_LEN = 2048
@@ -36,7 +36,7 @@ SAVE_FINAL = False
 
 LOSS_THRESHOLD = None
 
-MODEL_CHOICE = "nanogpt_124M"
+MODEL_CHOICE = "olmoe_7Bx1B"
 
 INIT_MODEL_PATH = f"init_models/init_{MODEL_CHOICE}"
 
@@ -65,6 +65,10 @@ training_config = {
     "opt_choice":  opt_choice,
     "opt_dtype": "bfloat16"
 }
+
+print("-------- Training Config --------")
+print(training_config)
+print("\n\n\n")
 
 
 device = torch.device(f"cuda:{DEVICE_ID}")
@@ -107,7 +111,7 @@ est_total_steps = TOTAL_TOKENS / MAX_TOKENS_PER_STEP
 
 opt_hyperparams = {
     "lr": 0,
-    "max_lr": 6e-3,
+    "max_lr": 1e-3,
     "warmup_pct": 0.05,
     "cooldown_pct": 0.2,
     "final_lr": 1e-5,
@@ -159,7 +163,7 @@ local_config = {
 
 
 dashboard = DashboardLogger(
-    url="http://localhost:8800",
+    url="http://localhost:8300",
     run_id=RUN_NAME,
     run_name=f"{RUN_NAME}",
     model=MODEL_CHOICE,
