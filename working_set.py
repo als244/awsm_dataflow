@@ -371,12 +371,14 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     target_layer_flops = min_layer_computation_time * est_tflops * 1e12
 
     target_tokens_per_round = math.ceil((target_layer_flops - attn_flops_min_est) / matmul_flops_per_token)
-
-    if fixed_seq_len:
-        target_tokens_per_round = max(max_seq_len, target_tokens_per_round)
         
     if verbose:
         print(f"[Working Set Log] Baseline Target Tokens Per Round for Sufficient Computation Time: {target_tokens_per_round}")
+    
+    compute_lim_tokens_per_round = target_tokens_per_round
+
+    if fixed_seq_len:
+        target_tokens_per_round = max(max_seq_len, target_tokens_per_round)
     
     full_agg_act_bytes_per_token = num_local_layers * get_full_act_slot_size_bytes(model_dims, 1)
     min_act_bytes_per_token = num_local_layers * get_min_act_slot_size_bytes(model_dims, 1)
@@ -423,24 +425,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with min chunk size: {min_chunk_size} and max global batch tokens: {max_global_batch_tokens}")
 
     target_tokens_per_round = min(max_global_batch_tokens, target_tokens_per_round)
-
-    if verbose:
-        print(f"[Working Set Log] Determined Initial Target Tokens Per Round Est: {target_tokens_per_round}")
-
-    rounded_target_tokens_per_round = round_to_nearest_divisor(target_tokens_per_round, max_global_batch_tokens)
-
-    if rounded_target_tokens_per_round > max_tokens_per_round:
-        
-        if verbose:
-            print(f"[Working Set Log] Rounding up Tokens Per Round to nearest divisor of global batch size exceeded max tokens per round; rounding down to nearest divisor of global batch size")
-        
-        rounded_target_tokens_per_round = round_to_nearest_divisor(target_tokens_per_round, max_global_batch_tokens, direction="down")
-
-    if verbose:
-        print(f"[Working Set Log] After rounding to nearest divisor of global batch size of {max_global_batch_tokens}, Target Tokens Per Round Est: {rounded_target_tokens_per_round}")
-
-    target_tokens_per_round = rounded_target_tokens_per_round
-
 
     ### get estimate for minimum chunk size based on MLP (important for MoE)
     hardware_arith_bound = (est_tflops * 1e12) / (est_mem_bw_gb_per_sec * 1e9)
@@ -498,6 +482,13 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
             break
 
         target_num_chunks = target_tokens_per_round // chunk_size
+
+        target_tokens_per_round = target_num_chunks * chunk_size
+        final_round_tokens = max_global_batch_tokens % target_tokens_per_round
+
+        ### if the last round will be too small and cause extra overhead, choose different chunk size
+        if final_round_tokens < 0.5 * compute_lim_tokens_per_round:
+            continue
 
         ### this includes transition table, context window, and activation workspace
         baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chunk_size, target_num_chunks, training_config=training_config)
