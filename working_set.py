@@ -646,7 +646,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         "max_chunk_size": target_chunk_size,
         "max_seq_len": max_seq_len,
         "target_round_tokens": target_chunk_size * target_num_chunks,
-        "target_num_rounds": max_global_batch_tokens // (target_chunk_size * target_num_chunks),
+        "target_num_rounds": math.ceil(max_global_batch_tokens /(target_chunk_size * target_num_chunks)),
         "max_total_round_tokens": max_tokens_per_round,
         "host_act_buffer_size": int(host_act_buffer_size_bytes),
         "gpu_act_buffer_size": int(gpu_act_buffer_size_bytes),
