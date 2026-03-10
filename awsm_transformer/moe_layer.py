@@ -4,7 +4,7 @@ import numpy as np
 import os
 
 from .ops import awsm_rmsnorm_fwd, awsm_rmsnorm_fwd_recompute, awsm_rmsnorm_bwd, awsm_rope_fwd, awsm_rope_bwd, awsm_attention_fwd, awsm_softmax, awsm_attention_bwd, awsm_rmsnorm_bwd, awsm_adamw_step, awsm_muon_step
-from .ops import awsm_moe_sort, awsm_moe_scatter, awsm_moe_scatter_routing_weights, awsm_moe_gather, awsm_copy_expert_counts, awsm_swiglu_moe_fwd, awsm_swiglu_moe_bwd, awsm_moe_router_gate_bwd, awsm_load_balance_bwd
+from .ops import awsm_moe_sort, awsm_moe_scatter, awsm_moe_scatter_routing_weights, awsm_moe_gather, awsm_copy_expert_counts, awsm_swiglu_moe_fwd, awsm_swiglu_moe_bwd, awsm_moe_router_gate_bwd, awsm_load_balance_bwd, awsm_fused_topk_softmax
 
 from .matmul_dispatchers import dispatcher, dispatcher_secondary
 from .mem_register import pin_tensor 
@@ -130,19 +130,26 @@ class TransformerMoELayer():
         # 1. Routing & Sorting
         # ============================================================================
         gate_logits = torch.matmul(ffn_norm_output, weights["w_router"], out=act_slot["x_router"])
-        raw_weights, topk_ids = torch.topk(gate_logits, k=top_k, dim=-1)
+        # raw_weights, topk_ids = torch.topk(gate_logits, k=top_k, dim=-1)
        
-        #`router_weights = torch.softmax(raw_weights, dim=-1)`
-        router_weights, _, _ = awsm_softmax(raw_weights, out=act_slot["router_weights"])
-       
-       
+        # #`router_weights = torch.softmax(raw_weights, dim=-1)`
+        # router_weights, _, _ = awsm_softmax(raw_weights, out=act_slot["router_weights"])
        
        
-        ## TODO: clean this up with small metadata and stay systematic. 
-        # Right now it is a bit fragile and "hardcoded"
-        #act_slot["router_weights"].copy_(router_weights)
-        topk_ids = topk_ids.int()
-        act_slot["chosen_experts"].copy_(topk_ids)
+       
+       
+        # ## TODO: clean this up with small metadata and stay systematic. 
+        # # Right now it is a bit fragile and "hardcoded"
+        # #act_slot["router_weights"].copy_(router_weights)
+        # topk_ids = topk_ids.int()
+        # act_slot["chosen_experts"].copy_(topk_ids)
+
+        router_weights, topk_ids = awsm_fused_topk_softmax(
+            gate_logits, 
+            top_k=top_k,
+            topk_ids_out=act_slot["chosen_experts"],      # writes int32 directly, no cast/copy
+            topk_weights_out=act_slot["router_weights"],   # writes softmax probs directly
+        )
 
         # Get sort indices and the histogram of how many tokens each expert gets
 

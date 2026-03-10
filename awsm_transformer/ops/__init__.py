@@ -8,4 +8,4 @@ from .embed import awsm_embedding_bwd
 from .adamw import awsm_adamw_step
 from .sample_top_p import awsm_sample_top_p
 from .muon import awsm_muon_step
-from .moe import awsm_moe_sort, awsm_moe_scatter, awsm_moe_scatter_routing_weights, awsm_moe_gather, awsm_copy_expert_counts, awsm_swiglu_moe_fwd, awsm_swiglu_moe_bwd, awsm_swiglu_moe_bwd_prescaled, awsm_moe_router_gate_bwd, awsm_load_balance_bwd
+from .moe import awsm_moe_sort, awsm_moe_scatter, awsm_moe_scatter_routing_weights, awsm_moe_gather, awsm_copy_expert_counts, awsm_swiglu_moe_fwd, awsm_swiglu_moe_bwd, awsm_swiglu_moe_bwd_prescaled, awsm_moe_router_gate_bwd, awsm_load_balance_bwd, awsm_fused_topk_softmax

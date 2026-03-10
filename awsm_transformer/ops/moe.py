@@ -216,6 +216,148 @@ def swiglu_bwd_prescaled_kernel(
 
 
 @triton.jit
+def fused_topk_softmax_kernel(
+    # Inputs
+    LOGITS_PTR,          # [T, E] gate logits
+    # Outputs
+    TOPK_IDS_PTR,        # [T, K] selected expert IDs (int32)
+    TOPK_WEIGHTS_PTR,    # [T, K] softmax probabilities
+    # Strides
+    stride_logits_t,
+    stride_logits_e,
+    stride_ids_t,
+    stride_ids_k,
+    stride_w_t,
+    stride_w_k,
+    # Dimensions
+    T,                        # total tokens
+    E: tl.constexpr,          # number of experts
+    K: tl.constexpr,          # top-k
+    BLOCK_E: tl.constexpr,    # >= E, power of 2
+    BLOCK_T: tl.constexpr,    # tokens per block
+):
+    """
+    Each program processes BLOCK_T tokens via a [BLOCK_T, BLOCK_E] tile.
+    Reductions along axis=1 give per-token max/argmin across experts.
+    
+    Top-K selection uses iterative max+mask:
+      1. Find max value per row (axis=1 reduction)
+      2. Among positions equal to max, find smallest index (tie-breaking)
+      3. Mask out selected expert, repeat K times
+    
+    Tie-breaking: we use equality with the row-max to find candidates,
+    then argmin to get the smallest index. The equality comparison is safe
+    here because max and the elements are in the same register tile —
+    no cross-warp reduction mismatch.
+    
+    The key difference from v1: tl.max on a 2D [BLOCK_T, BLOCK_E] tensor
+    along axis=1 produces a [BLOCK_T] vector of per-row maxima. These maxima
+    are then broadcast back and compared element-wise against the SAME tile
+    they were derived from. Since there's no separate scalar reduction step
+    that might lose precision, the equality check is reliable.
+    """
+    pid = tl.program_id(0).to(tl.int64)
+    
+    # Token and expert offsets — explicitly int64 for large T support.
+    # tl.arange returns int32; without the cast, token_offs * stride can
+    # overflow int32 when T * E > 2^31 (~33M elements for bf16).
+    token_offs = (pid * BLOCK_T + tl.arange(0, BLOCK_T)).to(tl.int64)
+    token_mask = token_offs < T
+    expert_offs = tl.arange(0, BLOCK_E).to(tl.int64)
+    expert_mask = expert_offs < E
+    
+    # Load [BLOCK_T, BLOCK_E] tile of logits
+    logits_ptrs = (LOGITS_PTR 
+                   + token_offs[:, None] * stride_logits_t 
+                   + expert_offs[None, :] * stride_logits_e)
+    load_mask = token_mask[:, None] & expert_mask[None, :]
+    remaining = tl.load(logits_ptrs, mask=load_mask, other=-float('inf')).to(tl.float32)
+    
+    # --- Top-K Selection ---
+    for k in range(K):
+        # Per-token max across experts: [BLOCK_T]
+        max_vals = tl.max(remaining, axis=1)
+        
+        # Find positions equal to max (ties included)
+        is_max = (remaining == max_vals[:, None]) & expert_mask[None, :]
+        
+        # Smallest index among tied maxima (deterministic tie-breaking)
+        candidates = tl.where(is_max, expert_offs[None, :], BLOCK_E)
+        expert_ids = tl.min(candidates, axis=1)  # [BLOCK_T]
+        
+        # Store expert ID
+        id_ptrs = TOPK_IDS_PTR + token_offs * stride_ids_t + k * stride_ids_k
+        tl.store(id_ptrs, expert_ids.to(tl.int32), mask=token_mask)
+        
+        # Store raw logit value (will be overwritten with softmax prob)
+        w_ptrs = TOPK_WEIGHTS_PTR + token_offs * stride_w_t + k * stride_w_k
+        tl.store(w_ptrs, max_vals, mask=token_mask)
+        
+        # Mask out selected expert
+        is_selected = (expert_offs[None, :] == expert_ids[:, None])
+        remaining = tl.where(is_selected, -float('inf'), remaining)
+    
+    # --- Softmax over selected top-K values ---
+    k_offs = tl.arange(0, K)
+    softmax_ptrs = (TOPK_WEIGHTS_PTR 
+                    + token_offs[:, None] * stride_w_t 
+                    + k_offs[None, :] * stride_w_k)
+    softmax_mask = token_mask[:, None]
+    selected_logits = tl.load(softmax_ptrs, mask=softmax_mask, other=0.0).to(tl.float32)
+    
+    # Stable softmax along K dim
+    max_logit = tl.max(selected_logits, axis=1)
+    exp_logits = tl.exp(selected_logits - max_logit[:, None])
+    sum_exp = tl.sum(exp_logits, axis=1)
+    softmax_probs = exp_logits / sum_exp[:, None]
+    
+    tl.store(softmax_ptrs, softmax_probs.to(TOPK_WEIGHTS_PTR.dtype.element_ty), mask=softmax_mask)
+
+
+@triton.jit
+def moe_prefix_sum_kernel(
+    BLOCK_COUNTS_PTR,   # [num_blocks, E] input from moe_count_kernel
+    OFFSETS_PTR,        # [num_blocks, E] output: exclusive prefix sum per column
+    TOTAL_COUNTS_PTR,   # [E] output: total tokens per expert
+    stride_bc_b,        # stride along block dim
+    stride_bc_e,        # stride along expert dim
+    stride_off_b,
+    stride_off_e,
+    NUM_BLOCKS,         # number of count blocks
+    E: tl.constexpr,    # number of experts
+    BLOCK_B: tl.constexpr,  # >= NUM_BLOCKS, power of 2
+):
+    """
+    One program per expert column. Each computes:
+      1. Exclusive prefix sum of block_counts[:, e] → offsets[:, e]
+      2. Total count for expert e → total_counts[e]
+    
+    This replaces block_counts.cumsum(dim=0) which launched a single-block 
+    serial scan kernel taking ~810µs.
+    """
+    pid_e = tl.program_id(0).to(tl.int64)
+    
+    offs_b = tl.arange(0, BLOCK_B)
+    mask_b = offs_b < NUM_BLOCKS
+    
+    # Load column block_counts[:, e]
+    bc_ptrs = BLOCK_COUNTS_PTR + offs_b * stride_bc_b + pid_e * stride_bc_e
+    counts = tl.load(bc_ptrs, mask=mask_b, other=0).to(tl.int32)
+    
+    # Exclusive prefix sum: exclusive[i] = sum(counts[0..i-1])
+    inclusive_sum = tl.cumsum(counts, axis=0)
+    exclusive_sum = inclusive_sum - counts
+    
+    # Total for this expert
+    total = tl.sum(counts, axis=0)
+    tl.store(TOTAL_COUNTS_PTR + pid_e, total)
+    
+    # Store exclusive prefix sum
+    off_ptrs = OFFSETS_PTR + offs_b * stride_off_b + pid_e * stride_off_e
+    tl.store(off_ptrs, exclusive_sum, mask=mask_b)
+
+
+@triton.jit
 def moe_router_gate_bwd_kernel(
     DLOGITS_PTR, DPROBS_PTR, PROBS_PTR, INDICES_PTR, EXPERTS_PTR,
     stride_dlogits_t, stride_probs_t, stride_indices_t, stride_experts_t,
@@ -447,45 +589,18 @@ def awsm_moe_sort(
     """
     Sort token-expert assignments by expert ID for efficient batched expert computation.
     
-    Creates a mapping from original [token, k] positions to sorted positions where
-    all tokens for expert 0 come first, then expert 1, etc.
+    Same API and semantics as the original. The only change is internal:
+    the slow PyTorch cumsum is replaced with a Triton prefix-sum kernel.
     
     Args:
-        topk_ids: Expert IDs for each token's top-k choices.
-            Shape: [T, K] where T=num_tokens, K=top_k
-            Dtype: int32 or int64
-            Must be: CUDA tensor
-            
-        num_experts: Total number of experts (E).
-        
-        indices: Optional pre-allocated output buffer for index mapping.
-            Shape: [T, K]
-            Dtype: same as topk_ids
-            Must be: CUDA tensor
-            If None, will be allocated.
-            
-        block_size: Triton block size for parallel processing. Default 256.
+        topk_ids: Expert IDs, shape [T, K], CUDA, int32/int64
+        num_experts: Total number of experts (E)
+        indices: Optional pre-allocated output [T, K]
+        expert_counts_gpu: Optional pre-allocated output [E] for counts
+        block_size: Triton block size. Default 256.
     
     Returns:
-        Tuple of:
-            index_mapping: Maps original position to sorted position.
-                Shape: [T, K]
-                Semantics: index_mapping[t, k] = sorted position for token t's k-th expert
-                
-            expert_counts: Number of tokens assigned to each expert.
-                Shape: [E]
-                Dtype: int32
-    
-    Example:
-        # Token 0 -> experts [2, 1], Token 1 -> experts [0, 2]
-        topk_ids = torch.tensor([[2, 1], [0, 2]], device='cuda')
-        index_mapping, counts = awsm_moe_sort(topk_ids, num_experts=3)
-        # counts = [1, 1, 2]  (expert 0 has 1, expert 1 has 1, expert 2 has 2)
-        # index_mapping maps each (token, k) to its position in the sorted array
-    
-    Raises:
-        AssertionError: If topk_ids is not on CUDA.
-        AssertionError: If provided indices has wrong shape.
+        (index_mapping [T, K], expert_counts [E])
     """
     if not topk_ids.is_cuda:
         raise ValueError("topk_ids must be a CUDA tensor")
@@ -496,6 +611,7 @@ def awsm_moe_sort(
     num_blocks = triton.cdiv(N_TOKENS, block_size)
     block_counts = torch.zeros((num_blocks, num_experts), dtype=torch.int32, device=topk_ids.device)
     
+    # Phase 1: Count tokens per expert per block (unchanged)
     moe_count_kernel[(num_blocks,)](
         flat_ids, 
         block_counts, 
@@ -504,16 +620,45 @@ def awsm_moe_sort(
         BLOCK_SIZE=block_size
     )
 
-    total_counts = block_counts.sum(dim=0)
-    expert_starts = torch.cat([
-        torch.zeros(1, dtype=torch.int32, device=topk_ids.device), 
-        total_counts.cumsum(0)[:-1]
-    ])
+    # Phase 2: Prefix sum (FIXED — replaces the slow PyTorch ops)
+    #
+    # BEFORE (launches tensor_kernel_scan_outer_dim with grid<<<1,1,1>>>, ~810µs):
+    #   total_counts = block_counts.sum(dim=0)
+    #   expert_starts = torch.cat([torch.zeros(1, ...), total_counts.cumsum(0)[:-1]])
+    #   block_accum = torch.zeros_like(block_counts)
+    #   block_accum[1:] = block_counts.cumsum(dim=0)[:-1]
+    #   offsets = block_accum + expert_starts.unsqueeze(0)
+    #
+    # AFTER (one Triton kernel + one tiny cumsum on [E]):
     
-    block_accum = torch.zeros_like(block_counts)
-    block_accum[1:] = block_counts.cumsum(dim=0)[:-1]
+    block_accum = torch.empty_like(block_counts)
+    total_counts = torch.empty(num_experts, dtype=torch.int32, device=topk_ids.device)
+    
+    BLOCK_B = triton.next_power_of_2(num_blocks)
+    num_warps = max(1, min(4, BLOCK_B // 32))
+    
+    moe_prefix_sum_kernel[(num_experts,)](
+        block_counts,
+        block_accum,
+        total_counts,
+        block_counts.stride(0), block_counts.stride(1),
+        block_accum.stride(0), block_accum.stride(1),
+        num_blocks,
+        E=num_experts,
+        BLOCK_B=BLOCK_B,
+        num_warps=num_warps,
+    )
+    
+    # expert_starts: exclusive cumsum of total_counts, shape [E]
+    # This is cumsum on a tiny [E] tensor (~64 elements) — completely different 
+    # PyTorch code path from the [512, E] cumsum, takes <10µs.
+    expert_starts = torch.zeros(num_experts, dtype=torch.int32, device=topk_ids.device)
+    expert_starts[1:] = total_counts.cumsum(0)[:-1]
+    
+    # Final offsets = per-block exclusive prefix sum + global expert start
     offsets = block_accum + expert_starts.unsqueeze(0)
 
+    # Phase 3: Map tokens to sorted positions (unchanged)
     if indices is None:
         indices_flat = torch.empty_like(flat_ids)
     else:
@@ -537,6 +682,7 @@ def awsm_moe_sort(
     if expert_counts_gpu is not None:
         expert_counts_gpu.copy_(total_counts)
     return sorted_indices, total_counts
+
 
 
 def awsm_copy_expert_counts(
@@ -587,6 +733,93 @@ def awsm_copy_expert_counts(
         n_experts,
         BLOCK_SIZE=BLOCK_SIZE
     )
+
+def awsm_fused_topk_softmax(
+    gate_logits: torch.Tensor,
+    top_k: int,
+    topk_ids_out: torch.Tensor = None,
+    topk_weights_out: torch.Tensor = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Fused top-K expert selection + softmax for MoE routing.
+    
+    Replaces:
+        raw_weights, topk_ids = torch.topk(gate_logits, k=top_k, dim=-1)
+        router_weights = softmax(raw_weights, dim=-1)
+    
+    Args:
+        gate_logits: Shape [T, E], CUDA, contiguous
+        top_k: Number of experts per token (K)
+        topk_ids_out: Optional [T, K] int32 output buffer
+        topk_weights_out: Optional [T, K] output buffer
+    
+    Returns:
+        (topk_weights, topk_ids) with shapes [T, K]
+    """
+    if not gate_logits.is_cuda:
+        raise ValueError("gate_logits must be a CUDA tensor")
+    if not gate_logits.is_contiguous():
+        raise ValueError("gate_logits must be contiguous")
+    if gate_logits.dim() != 2:
+        raise ValueError(f"gate_logits must be 2D, got {gate_logits.dim()}D")
+    
+    T, E = gate_logits.shape
+    K = top_k
+    
+    if K > E:
+        raise ValueError(f"top_k ({K}) cannot exceed num_experts ({E})")
+    
+    if topk_ids_out is None:
+        topk_ids_out = torch.empty((T, K), dtype=torch.int32, device=gate_logits.device)
+    else:
+        if topk_ids_out.shape != (T, K):
+            raise ValueError(f"topk_ids_out shape {topk_ids_out.shape} must be [{T}, {K}]")
+        if not topk_ids_out.is_contiguous():
+            raise ValueError("topk_ids_out must be contiguous")
+    
+    if topk_weights_out is None:
+        topk_weights_out = torch.empty((T, K), dtype=gate_logits.dtype, device=gate_logits.device)
+    else:
+        if topk_weights_out.shape != (T, K):
+            raise ValueError(f"topk_weights_out shape {topk_weights_out.shape} must be [{T}, {K}]")
+        if not topk_weights_out.is_contiguous():
+            raise ValueError("topk_weights_out must be contiguous")
+    
+    BLOCK_E = triton.next_power_of_2(E)
+    
+    # Tile sizing: BLOCK_T * BLOCK_E should be ~8K-16K elements
+    # to keep register pressure reasonable while amortizing launch overhead.
+    if BLOCK_E <= 32:
+        BLOCK_T = 256
+        num_warps = 8
+    elif BLOCK_E <= 64:
+        BLOCK_T = 128
+        num_warps = 4
+    elif BLOCK_E <= 128:
+        BLOCK_T = 64
+        num_warps = 4
+    else:
+        BLOCK_T = 32
+        num_warps = 4
+    
+    grid = (triton.cdiv(T, BLOCK_T),)
+    
+    fused_topk_softmax_kernel[grid](
+        gate_logits,
+        topk_ids_out,
+        topk_weights_out,
+        gate_logits.stride(0), gate_logits.stride(1),
+        topk_ids_out.stride(0), topk_ids_out.stride(1),
+        topk_weights_out.stride(0), topk_weights_out.stride(1),
+        T,
+        E=E,
+        K=K,
+        BLOCK_E=BLOCK_E,
+        BLOCK_T=BLOCK_T,
+        num_warps=num_warps,
+    )
+    
+    return topk_weights_out, topk_ids_out
 
 
 def awsm_moe_scatter(
