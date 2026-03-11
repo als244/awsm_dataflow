@@ -486,8 +486,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         target_tokens_per_round = target_num_chunks * chunk_size
         final_round_tokens = max_global_batch_tokens % target_tokens_per_round
 
+
         ### if the last round will be too small and cause extra overhead, choose different chunk size
-        if final_round_tokens < 0.5 * compute_lim_tokens_per_round:
+        if final_round_tokens > 0 and final_round_tokens < 0.25 * compute_lim_tokens_per_round:
             continue
 
         ### this includes transition table, context window, and activation workspace
@@ -572,8 +573,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
         if best_option["n_gpu_grad_layers"] == 1 and option["n_gpu_grad_layers"] > 1:
             best_option = option
-
-       
 
 
     if best_option is None:
