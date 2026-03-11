@@ -634,8 +634,14 @@ def awsm_moe_sort(
     block_accum = torch.empty_like(block_counts)
     total_counts = torch.empty(num_experts, dtype=torch.int32, device=topk_ids.device)
     
-    BLOCK_B = triton.next_power_of_2(num_blocks)
-    num_warps = max(1, min(4, BLOCK_B // 32))
+    MAX_BLOCK_B = 8192  # Fixed upper bound — no recompilation on seq len change
+    if num_blocks > MAX_BLOCK_B:
+        raise ValueError(
+            f"num_blocks={num_blocks} exceeds MAX_BLOCK_B={MAX_BLOCK_B}. "
+            f"Increase MAX_BLOCK_B or increase block_size."
+        )
+
+    num_warps = max(1, min(4, MAX_BLOCK_B // 32))
     
     moe_prefix_sum_kernel[(num_experts,)](
         block_counts,
@@ -645,7 +651,7 @@ def awsm_moe_sort(
         block_accum.stride(0), block_accum.stride(1),
         num_blocks,
         E=num_experts,
-        BLOCK_B=BLOCK_B,
+        BLOCK_B=MAX_BLOCK_B,
         num_warps=num_warps,
     )
     
