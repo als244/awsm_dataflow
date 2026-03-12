@@ -497,36 +497,98 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         ### this includes transition table, context window, and activation workspace
         baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chunk_size, target_num_chunks, training_config=training_config)
 
+        n_gpu_layers = 1
+        n_gpu_grad_layers = 1
+
         cur_remaining_gpu_mem_bytes -= baseline_act_gpu_memory
 
     
         ### first try to fill up the 1st layer worth of act slots
         full_act_slot_size_bytes = get_full_act_slot_size_bytes(model_dims, chunk_size)
 
-
-        first_layer_act_slots = min(target_num_chunks, cur_remaining_gpu_mem_bytes // full_act_slot_size_bytes)
-
         ### need at least 1 act slot
-        if first_layer_act_slots < 1:
-            continue
+        if cur_remaining_gpu_mem_bytes < full_act_slot_size_bytes:
+            continue 
 
-        gpu_act_workspace_size_bytes = first_layer_act_slots * full_act_slot_size_bytes
+        gpu_act_workspace_size_bytes = full_act_slot_size_bytes
 
         cur_remaining_gpu_mem_bytes -= gpu_act_workspace_size_bytes
 
+        ### need to have at least 1 layer of optimizer as part of act workspace
+        if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
+            extra_opt_bytes = backbone_sizes["opt_bytes"] - gpu_act_workspace_size_bytes
+            ### not enough memory for 1 layer of optimizer
+            if cur_remaining_gpu_mem_bytes < extra_opt_bytes:
+                continue
+            gpu_act_workspace_size_bytes += extra_opt_bytes
+            cur_remaining_gpu_mem_bytes -= extra_opt_bytes
+
+        
+        ### now first prioritize getting 2 act slots, then 2 layers/gradients, then complete layers...
+
+        temp_act_slots = gpu_act_workspace_size_bytes // full_act_slot_size_bytes
+        if temp_act_slots < 2:
+            ## use space for 2nd act slot
+            if cur_remaining_gpu_mem_bytes >= full_act_slot_size_bytes:
+                gpu_act_workspace_size_bytes += full_act_slot_size_bytes
+                cur_remaining_gpu_mem_bytes -= full_act_slot_size_bytes
+        
+        ## now prioritize second layer weights
+        if cur_remaining_gpu_mem_bytes >= backbone_sizes["weight_bytes"]:
+            n_gpu_layers = 2
+            cur_remaining_gpu_mem_bytes -= backbone_sizes["weight_bytes"]
+
+        ## now prioritize second layer gradients
+        if cur_remaining_gpu_mem_bytes >= backbone_sizes["grad_bytes"]:
+            n_gpu_grad_layers = 2
+            cur_remaining_gpu_mem_bytes -= backbone_sizes["grad_bytes"]
+
 
         ### now determine how many complete model layers we should have
+        ### first fill up first layer of act slots, then fill up second layer, then apply remaining memory to complete layers
+
+        ### fill first layer of act slots
+        temp_act_slots = gpu_act_workspace_size_bytes // full_act_slot_size_bytes
+        if temp_act_slots < target_num_chunks:
+
+            remain_first_layer_slots = target_num_chunks - temp_act_slots
+            first_layer_additional_act_bytes = remain_first_layer_slots * full_act_slot_size_bytes
+            ### can only assign partial act slots to first layer and we are done with assignments
+            if cur_remaining_gpu_mem_bytes < first_layer_additional_act_bytes:
+                remain_slots = cur_remaining_gpu_mem_bytes // full_act_slot_size_bytes
+                gpu_act_workspace_size_bytes += remain_slots * full_act_slot_size_bytes
+                cur_remaining_gpu_mem_bytes -= remain_slots * full_act_slot_size_bytes
+            else:
+                ### can assign first full layer
+                gpu_act_workspace_size_bytes += first_layer_additional_act_bytes
+                cur_remaining_gpu_mem_bytes -= first_layer_additional_act_bytes
+
+        temp_act_slots = gpu_act_workspace_size_bytes // full_act_slot_size_bytes
+        ### fill second layer of act slots
+        if temp_act_slots < 2 * target_num_chunks:
+            remain_second_layer_slots = 2 * target_num_chunks - temp_act_slots
+            second_layer_additional_act_bytes = remain_second_layer_slots * full_act_slot_size_bytes
+            ### can only assign partial act slots to second layer and we are done with assignments
+            if cur_remaining_gpu_mem_bytes < second_layer_additional_act_bytes:
+                remain_slots = cur_remaining_gpu_mem_bytes // full_act_slot_size_bytes
+                gpu_act_workspace_size_bytes += remain_slots * full_act_slot_size_bytes
+                cur_remaining_gpu_mem_bytes -= remain_slots * full_act_slot_size_bytes
+            else:
+                ### can assign second full layer
+                gpu_act_workspace_size_bytes += second_layer_additional_act_bytes
+                cur_remaining_gpu_mem_bytes -= second_layer_additional_act_bytes
+    
         ### At this point we can equally divide remaining GPU memory to know how many complete
-        ### layers (weights + grad + activations) we can store, however we will need to account
-        ### for chunk size which may increase context window size + be a factor of addition memory workspace
+        ### layers (weights + grad + activations) we can store...
+        ### chunk size may increase context window size + be a factor of addition memory workspace
         ### activation size scales linearly with total number of tokens regardless of chunking (chunking impacts baseline act workspace)
         additional_full_compute_layer_size_bytes = get_full_compute_layer_size_bytes(model_dims, chunk_size * target_num_chunks, backbone_sizes)
 
         ### this is on top of the 1 full layer we have as part of baseline
         additional_complete_layers_est = int(min(num_local_layers - 1, cur_remaining_gpu_mem_bytes // additional_full_compute_layer_size_bytes))
     
-        n_gpu_layers = 1 + additional_complete_layers_est
-        n_gpu_grad_layers = 1 + additional_complete_layers_est
+        n_gpu_layers += additional_complete_layers_est
+        n_gpu_grad_layers += additional_complete_layers_est
 
         complete_layers_size_est = additional_complete_layers_est * additional_full_compute_layer_size_bytes
     
@@ -534,23 +596,18 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
         ### baseline for act workspace
         gpu_act_workspace_size_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, chunk_size * target_num_chunks)
+    
         
-        if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
-            extra_opt_act_workspace_size_bytes = backbone_sizes["opt_bytes"] - gpu_act_workspace_size_bytes
-            ### this option is not valid, wont be able to fit optimizer...
-            if leftover_post_complete_layers_bytes < extra_opt_act_workspace_size_bytes:
-                continue
-            gpu_act_workspace_size_bytes += extra_opt_act_workspace_size_bytes
-            leftover_post_complete_layers_bytes -= extra_opt_act_workspace_size_bytes
-
-        ### if we can fit addtional model layer give priority to that, then grad layer then act workspace
-        if n_gpu_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
+        ### if we have less than 2 layers/gradients give priority to that, otherwise prioritize act workspace
+        if n_gpu_layers < 2 and n_gpu_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
             n_gpu_layers += 1
             leftover_post_complete_layers_bytes -= backbone_sizes["weight_bytes"]
-        if n_gpu_grad_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
+        if n_gpu_grad_layers < 2 and n_gpu_grad_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
             n_gpu_grad_layers += 1
             leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
         gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
+
+        n_gpu_opt_layers = int(min(num_local_layers, gpu_act_workspace_size_bytes // backbone_sizes["opt_bytes"]))
 
         total_act_slots = int(target_num_chunks * num_local_layers)
 
@@ -566,7 +623,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         #     print(f"[Working Set Log] Determined Target Chunk Size: {chunk_size}, Target Num Chunks: {target_num_chunks}")
         #     print(f"[Working Set Log] Determined Complete Compute Layers (weights + grad + act slots): {additional_complete_layers_est + 1}")
 
-        option = {"target_chunk_size": chunk_size, "target_num_chunks": target_num_chunks, "n_gpu_layers": n_gpu_layers, "n_gpu_grad_layers": n_gpu_grad_layers, "gpu_act_workspace_size_bytes": gpu_act_workspace_size_bytes, "gpu_act_slots": gpu_act_slots, "total_act_slots": total_act_slots, "act_slot_size_bytes": full_act_slot_size_bytes}
+        option = {"target_chunk_size": chunk_size, "target_num_chunks": target_num_chunks, "n_gpu_layers": n_gpu_layers, "n_gpu_grad_layers": n_gpu_grad_layers, "n_gpu_opt_layers": n_gpu_opt_layers, "gpu_act_workspace_size_bytes": gpu_act_workspace_size_bytes, "gpu_act_slots": gpu_act_slots, "total_act_slots": total_act_slots, "act_slot_size_bytes": full_act_slot_size_bytes}
         valid_options.append(option)
 
         ### this means a total of 2 complete layers
@@ -586,6 +643,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         if best_option["n_gpu_grad_layers"] == 1 and option["n_gpu_grad_layers"] > 1:
             best_option = option
 
+        if best_option["n_gpu_opt_layers"] == 1 and option["n_gpu_opt_layers"] > 1:
+            best_option = option
+
 
     if best_option is None:
         raise ValueError("Error: Not enough GPU memory to fit any valid chunk size large enough to fit at least 1 additional complete layer")
@@ -598,22 +658,18 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     target_num_chunks = best_option["target_num_chunks"]
     n_gpu_layers = best_option["n_gpu_layers"]
     n_gpu_grad_layers = best_option["n_gpu_grad_layers"]
+    n_gpu_opt_layers = best_option["n_gpu_opt_layers"]
     gpu_act_workspace_size_bytes = best_option["gpu_act_workspace_size_bytes"]
     total_act_slots = best_option["total_act_slots"]
     gpu_act_slots = best_option["gpu_act_slots"]
 
     full_act_slot_size_bytes = get_full_act_slot_size_bytes(model_dims, target_chunk_size)
-    
-    
+
     gpu_act_buffer_size_bytes = gpu_act_workspace_size_bytes
     
-    ## we reuse gpu act buffer during opt step
-    assert gpu_act_buffer_size_bytes >= backbone_sizes["opt_bytes"]
-    assert gpu_act_buffer_size_bytes >= gpu_act_slots * full_act_slot_size_bytes
-
-    n_gpu_opt_layers = int(min(num_local_layers, gpu_act_buffer_size_bytes // backbone_sizes["opt_bytes"]))
-    
     endpoint_bytes = endpoint_sizes["embed_bytes"] + endpoint_sizes["head_bytes"]
+
+    ### recompute with chosen values
 
     baseline_act_gpu_memory = get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, target_chunk_size, target_num_chunks, training_config=training_config)
 
