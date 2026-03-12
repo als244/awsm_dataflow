@@ -40,6 +40,9 @@ def get_transformer_transfer_report(chunk_size, model_dims, device_id=0, to_pin=
 
     transfer_report["layer_concurrent_transfer_duration_sec"] = concurrent_avg_duration_sec
     transfer_report["overall_unidirectional_concurrent_bandwidth_gb_per_sec"] = concurrent_throughput_bytes_per_sec / 1e9
+
+    torch.cuda.synchronize()
+    torch.cuda.empty_cache()
     
     return transfer_report
 
