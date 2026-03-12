@@ -12,6 +12,15 @@ def bench_matmul(A, B, C=None, D=None, alpha=1.0, beta=0.0, n_warmup=5, n_reps=1
     if A.shape[1] != B.shape[0]:
         raise ValueError("A and B must have matching inner dimensions")
 
+    M = A.shape[0]
+    K = A.shape[1]
+    N = B.shape[1]
+
+    created_D = False
+    if D is None:
+        created_D = True
+        D = torch.empty(M, N, dtype=A.dtype, device=A.device)
+
     stream_obj = torch.cuda.current_stream()
     stream_ptr = stream_obj.cuda_stream
 
@@ -34,10 +43,11 @@ def bench_matmul(A, B, C=None, D=None, alpha=1.0, beta=0.0, n_warmup=5, n_reps=1
     total_duration_sec = (end_time - start_time) / 1e9
     per_matmul_duration_sec = total_duration_sec / n_reps
 
-    M = A.shape[0]
-    K = A.shape[1]
-    N = B.shape[1]    
-
     throughput_flops_per_sec = (2 * M * K * N) / per_matmul_duration_sec
+
+    if created_D:
+        del D
+
+    torch.cuda.empty_cache()
 
     return per_matmul_duration_sec, throughput_flops_per_sec
