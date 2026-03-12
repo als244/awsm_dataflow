@@ -535,18 +535,21 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         gpu_act_workspace_size_bytes += additional_complete_layers_est * get_full_act_slot_size_bytes(model_dims, chunk_size * target_num_chunks)
         
         if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
-            gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
+            extra_opt_act_workspace_size_bytes = backbone_sizes["opt_bytes"] - gpu_act_workspace_size_bytes
+            gpu_act_workspace_size_bytes += extra_opt_act_workspace_size_bytes
+            leftover_post_complete_layers_bytes -= extra_opt_act_workspace_size_bytes
             if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
                 continue
-        else:
-            ### if we can fit addtional model layer give priority to that, then grad layer then act workspace
-            if n_gpu_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
-                n_gpu_layers += 1
-                leftover_post_complete_layers_bytes -= backbone_sizes["weight_bytes"]
-            if n_gpu_grad_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
-                n_gpu_grad_layers += 1
-                leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
-            gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
+
+        ### if we can fit addtional model layer give priority to that, then grad layer then act workspace
+        if n_gpu_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
+            n_gpu_layers += 1
+            leftover_post_complete_layers_bytes -= backbone_sizes["weight_bytes"]
+        if n_gpu_grad_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
+            n_gpu_grad_layers += 1
+            leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
+        
+        gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
 
         total_act_slots = int(target_num_chunks * num_local_layers)
 
