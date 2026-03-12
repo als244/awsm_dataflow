@@ -88,7 +88,7 @@
         }
     },
     "sparse_16Bx3B": {
-        "vocab_size": 128256,
+        "vocab_size": 50304,
         "n_layers": 32,
         "d_model": 3072,
         "head_dim": 128,
@@ -142,6 +142,28 @@
         "num_shared_experts": 0,
         "num_routed_experts": 128,
         "top_k": 8,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "mini_deepseek": {
+        "vocab_size": 50304,
+        "n_layers": 12,
+        "d_model": 7168,
+        "head_dim": 128,
+        "n_heads": 56,
+        "n_kv_heads": 8,
+        "expert_dim": 2048,
+        "num_shared_experts": 0,
+        "num_routed_experts": 16,
+        "top_k": 2,
         "is_causal": true,
         "datatypes": {
             "embed": "bfloat16",
