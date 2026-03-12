@@ -12,7 +12,7 @@ import math
 
 ### during training we want very compute bound to hide latency of other ops
 ### so we use a large arith bound factor
-ARITH_BOUND_FACTOR = 10
+ARITH_BOUND_FACTOR = 5
 
 ### BYtes for all layers in host memory, head/grad + 1 full (master + grad + opt) in GPU memory
 def get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=None, has_embed=True, has_head=True):
@@ -556,7 +556,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         #     print(f"[Working Set Log] Determined Target Chunk Size: {chunk_size}, Target Num Chunks: {target_num_chunks}")
         #     print(f"[Working Set Log] Determined Complete Compute Layers (weights + grad + act slots): {additional_complete_layers_est + 1}")
 
-        option = {"target_chunk_size": chunk_size, "target_num_chunks": target_num_chunks, "n_gpu_layers": n_gpu_layers, "n_gpu_grad_layers": n_gpu_grad_layers, "gpu_act_workspace_size_bytes": gpu_act_workspace_size_bytes, "gpu_act_slots": gpu_act_slots, "total_act_slots": total_act_slots}
+        option = {"target_chunk_size": chunk_size, "target_num_chunks": target_num_chunks, "n_gpu_layers": n_gpu_layers, "n_gpu_grad_layers": n_gpu_grad_layers, "gpu_act_workspace_size_bytes": gpu_act_workspace_size_bytes, "gpu_act_slots": gpu_act_slots, "total_act_slots": total_act_slots, "act_slot_size_bytes": full_act_slot_size_bytes}
         valid_options.append(option)
 
         ### this means a total of 2 complete layers
@@ -630,9 +630,12 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     assert host_act_buffer_size_bytes >= min_host_act_buffer_size_bytes
     
     assert est_total_host_bytes <= max_host_mem_bytes
+
+    ### based on selected chunk size and num chunks
+    target_tokens_per_round = target_chunk_size * target_num_chunks
     
     if verbose:
-        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / (1 << 30):.2f}GiB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / (1 << 30):.2f}GiB", flush=True)
+        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\tAct Slot Size: {full_act_slot_size_bytes / (1 << 20):.2f}MiB\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / (1 << 30):.2f}GiB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / (1 << 30):.2f}GiB", flush=True)
         print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / (1 << 30):.2f}GiB, Expected Host Memory Usage: {est_total_host_bytes / (1 << 30):.2f}GiB", flush=True)
 
     working_set_config = {
