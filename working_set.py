@@ -468,7 +468,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     if verbose:
         print(f"[Working Set Log] Chunk Size Options: {chunk_size_options}", flush=True)
-        print(f"[Working Set Log] Before deciding chunk size, observe remaining gpu mem bytes as: {remaining_gpu_mem_bytes}", flush=True)
+        print(f"[Working Set Log] Before deciding chunk size, observe remaining gpu mem bytes as: {remaining_gpu_mem_bytes}, target tokens per round: {target_tokens_per_round}", flush=True)
 
     for chunk_size in chunk_size_options:
 
@@ -485,8 +485,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
         target_num_chunks = target_tokens_per_round // chunk_size
 
-        target_tokens_per_round = target_num_chunks * chunk_size
-        final_round_tokens = max_global_batch_tokens % target_tokens_per_round
+        temp_target_tokens_per_round = target_num_chunks * chunk_size
+        final_round_tokens = max_global_batch_tokens % temp_target_tokens_per_round
 
 
         ### if the last round will be too small and cause extra overhead, choose different chunk size
@@ -548,7 +548,6 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         if n_gpu_grad_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["grad_bytes"]:
             n_gpu_grad_layers += 1
             leftover_post_complete_layers_bytes -= backbone_sizes["grad_bytes"]
-        
         gpu_act_workspace_size_bytes += leftover_post_complete_layers_bytes
 
         total_act_slots = int(target_num_chunks * num_local_layers)
