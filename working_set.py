@@ -629,18 +629,20 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     saved_act_sizes = get_transformer_saved_act_sizes(model_dims, target_chunk_size)
     min_act_slot_size_bytes = saved_act_sizes[0]
 
-    min_host_act_buffer_size_bytes = host_act_slots * min_act_slot_size_bytes
+    
+    if verbose:
+        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\tAct Slot Size: {full_act_slot_size_bytes / (1 << 20):.2f}MiB\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / (1 << 30):.2f}GiB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / (1 << 30):.2f}GiB", flush=True)
+        print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / (1 << 30):.2f}GiB, Expected Host Memory Usage: {est_total_host_bytes / (1 << 30):.2f}GiB", flush=True)
 
+    print(f"[Working Set Log] Determined Min Host Act Buffer Size of {min_host_act_buffer_size_bytes / (1 << 30):.2f}GiB and Selected Host Act Buffer Size of {host_act_buffer_size_bytes / (1 << 30):.2f}GiB", flush=True)
+    min_host_act_buffer_size_bytes = host_act_slots * min_act_slot_size_bytes
+    
     assert host_act_buffer_size_bytes >= min_host_act_buffer_size_bytes
     
     assert est_total_host_bytes <= max_host_mem_bytes
 
     ### based on selected chunk size and num chunks
     target_tokens_per_round = target_chunk_size * target_num_chunks
-    
-    if verbose:
-        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\tAct Slot Size: {full_act_slot_size_bytes / (1 << 20):.2f}MiB\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / (1 << 30):.2f}GiB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / (1 << 30):.2f}GiB", flush=True)
-        print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / (1 << 30):.2f}GiB, Expected Host Memory Usage: {est_total_host_bytes / (1 << 30):.2f}GiB", flush=True)
 
     working_set_config = {
         "available_gpu_memory_bytes": available_gpu_memory_capacity_bytes,
