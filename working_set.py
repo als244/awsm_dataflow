@@ -219,7 +219,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     ### Get baseline Hardware Environment with Chunk Size not Set (if not specified)
 
     if verbose:
-        print("[Working Set Log] Obtaining Baseline Hardware Environment...")
+        print("[Working Set Log] Obtaining Baseline Hardware Environment...", flush=True)
 
     baseline_hardware_env = get_hardware_env(chunk_size, model_dims, device_id=device_id)
 
@@ -230,25 +230,25 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     available_host_memory_capacity_bytes = baseline_hardware_env["available_host_memory_capacity"]
 
     if verbose:
-        print(f"[Working Set Log] Raw Observed Available GPU Memory Capacity of {available_gpu_memory_capacity_bytes / (1 << 30):.2f}GiB and Host Memory Capacity of {available_host_memory_capacity_bytes / (1 << 30):.2f}GiB")
+        print(f"[Working Set Log] Raw Observed Available GPU Memory Capacity of {available_gpu_memory_capacity_bytes / (1 << 30):.2f}GiB and Host Memory Capacity of {available_host_memory_capacity_bytes / (1 << 30):.2f}GiB", flush=True)
         if max_gpu_mem_bytes is not None:
-            print(f"[Working Set Log] Inputted Max GPU Memory of {max_gpu_mem_bytes / (1 << 30):.2f}GiB")
+            print(f"[Working Set Log] Inputted Max GPU Memory of {max_gpu_mem_bytes / (1 << 30):.2f}GiB", flush=True)
         if max_host_mem_bytes is not None:
-            print(f"[Working Set Log] Inputted Max Host Memory of {max_host_mem_bytes / (1 << 30):.2f}GiB")
-        print(f"[Working Set Log] Using Leeway of {leeway_gpu_mem_bytes / (1 << 30):.2f}GiB for GPU Memory and {leeway_host_mem_bytes / (1 << 30):.2f}GiB for Host Memory")
+            print(f"[Working Set Log] Inputted Max Host Memory of {max_host_mem_bytes / (1 << 30):.2f}GiB", flush=True)
+        print(f"[Working Set Log] Using Leeway of {leeway_gpu_mem_bytes / (1 << 30):.2f}GiB for GPU Memory and {leeway_host_mem_bytes / (1 << 30):.2f}GiB for Host Memory", flush=True)
 
     if max_gpu_mem_bytes is None:
         max_gpu_mem_bytes = available_gpu_memory_capacity_bytes
     else:
         if max_gpu_mem_bytes > available_gpu_memory_capacity_bytes:
-            print(f"Inputted max_gpu_mem_bytes ({max_gpu_mem_bytes}) is greater than available_gpu_memory_capacity_bytes ({available_gpu_memory_capacity_bytes}), setting max gpu bytes to {available_gpu_memory_capacity_bytes}")
+            print(f"Inputted max_gpu_mem_bytes ({max_gpu_mem_bytes}) is greater than available_gpu_memory_capacity_bytes ({available_gpu_memory_capacity_bytes}), setting max gpu bytes to {available_gpu_memory_capacity_bytes}", flush=True)
             max_gpu_mem_bytes = available_gpu_memory_capacity_bytes
 
     if max_host_mem_bytes is None:
         max_host_mem_bytes = available_host_memory_capacity_bytes   
     else:
         if max_host_mem_bytes > available_host_memory_capacity_bytes:
-            print(f"Inputted max_host_mem_bytes ({max_host_mem_bytes}) is greater than available_host_memory_capacity_bytes ({available_host_memory_capacity_bytes}, setting max host bytes to {available_host_memory_capacity_bytes}")
+            print(f"Inputted max_host_mem_bytes ({max_host_mem_bytes}) is greater than available_host_memory_capacity_bytes ({available_host_memory_capacity_bytes}, setting max host bytes to {available_host_memory_capacity_bytes}", flush=True)
             max_host_mem_bytes = available_host_memory_capacity_bytes
 
     max_gpu_mem_bytes -= leeway_gpu_mem_bytes
@@ -262,15 +262,15 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     baseline_gpu_bytes, baseline_host_bytes, endpoint_sizes, backbone_sizes = get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=training_config, has_embed=has_embed, has_head=has_head)
     
     if max_gpu_mem_bytes < baseline_gpu_bytes:
-        raise ValueError(f"max_gpu_mem_bytes ({max_gpu_mem_bytes / (1 << 30):,.3f}GiB) is less than required minimum baseline_gpu_bytes ({baseline_gpu_bytes / (1 << 30):,.2f}GiB)")
+        raise ValueError(f"max_gpu_mem_bytes ({max_gpu_mem_bytes / (1 << 30):,.3f}GiB) is less than required minimum baseline_gpu_bytes ({baseline_gpu_bytes / (1 << 30):,.2f}GiB)", flush=True)
     if max_host_mem_bytes < baseline_host_bytes:
-        raise ValueError(f"max_host_mem_bytes ({max_host_mem_bytes / (1 << 30):,.3f}GiB) is less than required minimum baseline_host_bytes ({baseline_host_bytes / (1 << 30):,.2f}GiB)")
+        raise ValueError(f"max_host_mem_bytes ({max_host_mem_bytes / (1 << 30):,.3f}GiB) is less than required minimum baseline_host_bytes ({baseline_host_bytes / (1 << 30):,.2f}GiB)", flush=True)
 
     remaining_gpu_mem_bytes = max_gpu_mem_bytes - baseline_gpu_bytes
     remaining_host_mem_bytes = max_host_mem_bytes - baseline_host_bytes
 
     if verbose:
-        print(f"[Working Set Log] After Baseline Model Memory Requirements and Accounting for Set Memory Bounds, Determined: Remaining GPU Memory of {remaining_gpu_mem_bytes / (1 << 30):,.2f}GiB and Remaining Host Memory of {remaining_host_mem_bytes / (1 << 30):,.2f}GiB")
+        print(f"[Working Set Log] After Baseline Model Memory Requirements and Accounting for Set Memory Bounds, Determined: Remaining GPU Memory of {remaining_gpu_mem_bytes / (1 << 30):,.2f}GiB and Remaining Host Memory of {remaining_host_mem_bytes / (1 << 30):,.2f}GiB", flush=True)
     
 
     ### Now we can fit at least 1 full layer in GPU memory (+ embed/head full training state)
@@ -302,15 +302,15 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     max_tokens_per_round = int(min(recomp_lim_max_tokens_per_round, gpu_lim_max_tokens_per_round))
 
     if verbose:
-        print(f"[Working Set Log] Orig max tok per round: {max_tokens_per_round}\n\tMax global batch tokens: {max_global_batch_tokens}")
+        print(f"[Working Set Log] Orig max tok per round: {max_tokens_per_round}\n\tMax global batch tokens: {max_global_batch_tokens}", flush=True)
 
     max_tokens_per_round = min(max_tokens_per_round, max_global_batch_tokens)
 
     if max_tokens_per_round < max_seq_len:
-        raise ValueError(f"Could not find a valid configuration for seq len {max_seq_len}; estimating max tokens per round to be {max_tokens_per_round}")
+        raise ValueError(f"Could not find a valid configuration for seq len {max_seq_len}; estimating max tokens per round to be {max_tokens_per_round}", flush=True)
     
     if verbose:
-        print(f"[Working Set Log] Determined Max Tokens Per Round of {max_tokens_per_round} based on aggregate available memory of {remaining_total_mem / (1 << 30):.2f}GiB, and GPU memory of {remaining_gpu_mem_bytes / (1 << 30):.2f}GiB")
+        print(f"[Working Set Log] Determined Max Tokens Per Round of {max_tokens_per_round} based on aggregate available memory of {remaining_total_mem / (1 << 30):.2f}GiB, and GPU memory of {remaining_gpu_mem_bytes / (1 << 30):.2f}GiB", flush=True)
 
 
 
@@ -346,7 +346,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     est_mem_bw_gb_per_sec = baseline_hardware_env["basic_peak_mem_bandwidth_gb_per_sec"]
 
     if verbose:
-        print(f"[Working Set Log] Observed Layer Transfer Duration of {layer_transfer_duration_sec * 1e3:.2f} ms, Estimated Peak (N=8192 matmul) TFLOPS: {est_tflops:.2f}, Estimated Memory Bandwidth: {est_mem_bw_gb_per_sec:.2f} GB/s")
+        print(f"[Working Set Log] Observed Layer Transfer Duration of {layer_transfer_duration_sec * 1e3:.2f} ms, Estimated Peak (N=8192 matmul) TFLOPS: {est_tflops:.2f}, Estimated Memory Bandwidth: {est_mem_bw_gb_per_sec:.2f} GB/s", flush=True)
 
     ### now we need to determine number of tokens to at least take this long
     matmul_flops_per_token = get_layer_matmul_flops_per_token(model_dims)
@@ -374,7 +374,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     target_tokens_per_round = math.ceil((target_layer_flops - attn_flops_min_est) / matmul_flops_per_token)
         
     if verbose:
-        print(f"[Working Set Log] Baseline Target Tokens Per Round for Sufficient Computation Time: {target_tokens_per_round}")
+        print(f"[Working Set Log] Baseline Target Tokens Per Round for Sufficient Computation Time: {target_tokens_per_round}", flush=True)
     
     compute_lim_tokens_per_round = target_tokens_per_round
 
@@ -387,8 +387,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     min_save_tokens_per_round = remaining_total_mem // min_act_bytes_per_token
 
     if verbose:
-        print(f"[Working Set Log] Based on aggregate available memory to save all activations must use <= {full_save_tokens_per_round} tokens per round and to save minimum activations must use <= {min_save_tokens_per_round} tokens per round")
-        print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with max seq len: {max_seq_len}, full save tokens per round: {full_save_tokens_per_round}, min save tokens per round: {min_save_tokens_per_round} and max tokens per round: {max_tokens_per_round}")
+        print(f"[Working Set Log] Based on aggregate available memory to save all activations must use <= {full_save_tokens_per_round} tokens per round and to save minimum activations must use <= {min_save_tokens_per_round} tokens per round", flush=True)
+        print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with max seq len: {max_seq_len}, full save tokens per round: {full_save_tokens_per_round}, min save tokens per round: {min_save_tokens_per_round} and max tokens per round: {max_tokens_per_round}", flush=True)
 
 
     #target_tokens_per_round = max(max_seq_len, min(target_tokens_per_round, full_save_tokens_per_round))
@@ -423,7 +423,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         target_tokens_per_round = max(min_chunk_size, target_tokens_per_round)
 
     if verbose:
-        print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with min chunk size: {min_chunk_size} and max global batch tokens: {max_global_batch_tokens}")
+        print(f"[Working Set Log] Comparing prior tokens per round: {target_tokens_per_round} with min chunk size: {min_chunk_size} and max global batch tokens: {max_global_batch_tokens}", flush=True)
 
     target_tokens_per_round = min(max_global_batch_tokens, target_tokens_per_round)
 
@@ -442,7 +442,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         init_target_min_chunk_size = ARITH_BOUND_FACTOR * H * K * N / (K * N - H * (K + N))
     
     if verbose:
-        print(f"[Working Set Log] Determined Initial Target Min Chunk Size Est (based on Arithmetic Intensity bound x factor of {ARITH_BOUND_FACTOR}) of: {init_target_min_chunk_size}")
+        print(f"[Working Set Log] Determined Initial Target Min Chunk Size Est (based on Arithmetic Intensity bound x factor of {ARITH_BOUND_FACTOR}) of: {init_target_min_chunk_size}", flush=True)
 
     
     if min_chunk_size is not None:
@@ -466,8 +466,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     best_option = None
     valid_options = []
 
-    print(f"[Working Set Log] Chunk Size Options: {chunk_size_options}")
-    print(f"[Working Set Log] Before deciding chunk size, observe remaining gpu mem bytes as: {remaining_gpu_mem_bytes}")
+    if verbose:
+        print(f"[Working Set Log] Chunk Size Options: {chunk_size_options}", flush=True)
+        print(f"[Working Set Log] Before deciding chunk size, observe remaining gpu mem bytes as: {remaining_gpu_mem_bytes}", flush=True)
 
     for chunk_size in chunk_size_options:
 
@@ -580,7 +581,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         raise ValueError("Error: Not enough GPU memory to fit any valid chunk size large enough to fit at least 1 additional complete layer")
     
     if verbose:
-        print(f"[Working Set Log] Selected Best Option: {best_option}")
+        print(f"[Working Set Log] Selected Best Option: {best_option}", flush=True)
 
 
     target_chunk_size = best_option["target_chunk_size"]
@@ -631,8 +632,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     assert est_total_host_bytes <= max_host_mem_bytes
     
     if verbose:
-        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / (1 << 30):.2f}GiB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / (1 << 30):.2f}GiB")
-        print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / (1 << 30):.2f}GiB, Expected Host Memory Usage: {est_total_host_bytes / (1 << 30):.2f}GiB")
+        print(f"[Working Set Log] Determined Target Max Chunk Size of {target_chunk_size}, Target Tokens Per Round of {target_tokens_per_round}\n\t# GPU Full Act Slots: {gpu_act_slots}\n\t# Host Act Slots: {host_act_slots}\n\t# GPU Act Buffer Size: {gpu_act_buffer_size_bytes / (1 << 30):.2f}GiB\n\t# Host Act Buffer Size: {host_act_buffer_size_bytes / (1 << 30):.2f}GiB", flush=True)
+        print(f"[Working Set Log] Expected GPU Memory Usage: {est_total_gpu_bytes / (1 << 30):.2f}GiB, Expected Host Memory Usage: {est_total_host_bytes / (1 << 30):.2f}GiB", flush=True)
 
     working_set_config = {
         "available_gpu_memory_bytes": available_gpu_memory_capacity_bytes,
@@ -655,7 +656,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
     }
 
     if verbose:
-        print("[Working Set Log] Running Hardware Environment Check to Return Estimated Hardware Environment...")
+        print("[Working Set Log] Running Hardware Environment Check to Return Estimated Hardware Environment...", flush=True)
 
     chosen_hardware_env = get_hardware_env(target_chunk_size, model_dims, device_id=device_id)
 
