@@ -211,7 +211,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=1 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
@@ -223,7 +223,8 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
     baseline_hardware_env = get_hardware_env(chunk_size, model_dims, device_id=device_id)
 
-    
+    torch.cuda.synchronize()
+    torch.cuda.empty_cache()
 
     available_gpu_memory_capacity_bytes = baseline_hardware_env["available_gpu_memory_capacity"]
     available_host_memory_capacity_bytes = baseline_hardware_env["available_host_memory_capacity"]
@@ -657,6 +658,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         print("[Working Set Log] Running Hardware Environment Check to Return Estimated Hardware Environment...")
 
     chosen_hardware_env = get_hardware_env(target_chunk_size, model_dims, device_id=device_id)
+
+    torch.cuda.synchronize()
+    torch.cuda.empty_cache()
 
     return working_set_config, chosen_hardware_env
 
