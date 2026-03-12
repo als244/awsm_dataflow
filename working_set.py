@@ -537,10 +537,11 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         
         if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
             extra_opt_act_workspace_size_bytes = backbone_sizes["opt_bytes"] - gpu_act_workspace_size_bytes
+            ### this option is not valid, wont be able to fit optimizer...
+            if leftover_post_complete_layers_bytes < extra_opt_act_workspace_size_bytes:
+                continue
             gpu_act_workspace_size_bytes += extra_opt_act_workspace_size_bytes
             leftover_post_complete_layers_bytes -= extra_opt_act_workspace_size_bytes
-            if gpu_act_workspace_size_bytes < backbone_sizes["opt_bytes"]:
-                continue
 
         ### if we can fit addtional model layer give priority to that, then grad layer then act workspace
         if n_gpu_layers < num_local_layers and leftover_post_complete_layers_bytes >= backbone_sizes["weight_bytes"]:
