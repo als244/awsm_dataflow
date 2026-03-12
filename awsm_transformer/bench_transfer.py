@@ -67,8 +67,6 @@ def bench_transfer(num_bytes, src="cpu", dst="cuda:0", to_pin=True, n_reps=100, 
     if concurrent:
         del secondary_src_tensor
         del secondary_dst_tensor
-    
-    torch.cuda.empty_cache()
 
     return avg_duration_sec, throughput_bytes_per_sec
 

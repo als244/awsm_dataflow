@@ -48,6 +48,4 @@ def bench_matmul(A, B, C=None, D=None, alpha=1.0, beta=0.0, n_warmup=5, n_reps=1
     if created_D:
         del D
 
-    torch.cuda.empty_cache()
-
     return per_matmul_duration_sec, throughput_flops_per_sec
