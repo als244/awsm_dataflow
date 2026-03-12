@@ -103,8 +103,9 @@ def get_baseline_model_memory_requirements(model_dims, num_local_layers, trainin
 
         required_host_bytes += num_local_layers * (backbone_master_bytes + backbone_grad_bytes + backbone_opt_bytes)
         
-        ## require at least 1 layer in GPU memory of total training state
-        required_gpu_bytes += (backbone_master_bytes + backbone_grad_bytes + backbone_opt_bytes)
+        ## require at least 1 layer in GPU memory of weights and gradients, will handle opt separately
+        ## as part of activation buffer
+        required_gpu_bytes += (backbone_master_bytes + backbone_grad_bytes)
     ### Require at least 1 backbone layer in GPU memory
     elif num_local_layers > 0:
         backbone_weight_bytes = get_backbone_layer_size_bytes(model_dims)
