@@ -492,7 +492,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
 
         ### if the last round will be too small and cause extra overhead, choose different chunk size
-        if final_round_tokens > 0 and final_round_tokens < 0.75 * compute_lim_tokens_per_round:
+        if final_round_tokens > 0 and final_round_tokens < 0.4 * compute_lim_tokens_per_round:
             continue
 
         ### this includes transition table, context window, and activation workspace
