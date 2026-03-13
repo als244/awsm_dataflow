@@ -12,7 +12,7 @@ import math
 
 ### during training we want very compute bound to hide latency of other ops
 ### so we use a large arith bound factor
-ARITH_BOUND_FACTOR = 5
+ARITH_BOUND_FACTOR = 2
 
 ### BYtes for all layers in host memory, head/grad + 1 full (master + grad + opt) in GPU memory
 def get_baseline_model_memory_requirements(model_dims, num_local_layers, training_config=None, has_embed=True, has_head=True):
@@ -212,7 +212,7 @@ def get_baseline_gpu_activation_memory_requirements(model_dims, max_seq_len, chu
     return required_gpu_bytes
 
 
-def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=3 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
+def determine_working_set_config(model_dims, max_seq_len, max_global_batch_tokens, training_config=None, has_embed=True, has_head=True, num_local_layers=None, chunk_size = None, max_gpu_mem_bytes=None, max_host_mem_bytes=None, leeway_gpu_mem_bytes=2 * (1 << 30), leeway_host_mem_bytes=10 * (1 << 30), verbose=False, device_id=0, min_tokens_per_round_limit=None, max_tokens_per_round_limit=None, fixed_seq_len=False, min_chunk_size=None, max_chunk_size=None):
 
     if num_local_layers is None:
         num_local_layers = model_dims["n_layers"]
@@ -336,8 +336,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
         grad_layer_size = backbone_sizes["grad_bytes"]
         grad_transfer_duration_sec = grad_layer_size / (transfer_bandwidth_gb_per_sec * 1e9)
 
-    min_layer_computation_time = layer_transfer_duration_sec + grad_transfer_duration_sec
-    
+    min_layer_computation_time = (2 * layer_transfer_duration_sec + grad_transfer_duration_sec) / 2
+    #min_layer_computation_time = layer_transfer_duration_sec
+
     ## In some cases less tokens per round => larger window size => less recomputation => higher throughput
     ## this applies to very constrained GPU memory, high ratio of processing speed:interconnect bw, or host memory constrained
     ## regimes, though difference should be ~ 5-10% different and the above formula is more theoretically grounded
@@ -491,7 +492,7 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
 
         ### if the last round will be too small and cause extra overhead, choose different chunk size
-        if final_round_tokens > 0 and final_round_tokens < 0.25 * compute_lim_tokens_per_round:
+        if final_round_tokens > 0 and final_round_tokens < 0.75 * compute_lim_tokens_per_round:
             continue
 
         ### this includes transition table, context window, and activation workspace
