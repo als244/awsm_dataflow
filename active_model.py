@@ -1684,14 +1684,14 @@ class ActiveModel:
                 self.profiler.range_pop()
             """
 
-        with self.compute_stream:
-            self.profiler.range_push("Clear GPU Activations")
-            self.clear_gpu_activations()
-            self.profiler.range_pop()
+        self.clear_gpu_activations()
 
-        with self.compute_stream:
+        with self.inbound_stream:
             self.profiler.range_push("Create GPU Opt State")
-            self.create_gpu_opt_state()
+            
+        self.create_gpu_opt_state()
+
+        with self.inbound_stream:
             self.profiler.range_pop()
 
         cur_weight_idx = self.first_weight_layer_index_for_step
