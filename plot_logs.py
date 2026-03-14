@@ -547,6 +547,47 @@ def _plot_on_axes(
         from matplotlib.ticker import MaxNLocator
         ax.yaxis.set_major_locator(MaxNLocator(nbins=8, steps=[1, 2, 2.5, 5, 10]))
 
+    # ── Tok/sec reference lines on primary y-ticks (TFLOPS mode only) ──
+    if y_key == "effective_tflops":
+        # Find one reference point with both tflops and tok/sec
+        ref_tflops, ref_toksec = None, None
+        for e in entries:
+            tf = e.get("effective_tflops")
+            ts = e.get("tokens_per_sec")
+            if tf is not None and ts is not None and tf > 0:
+                ref_tflops, ref_toksec = tf, ts
+                break
+
+        if ref_tflops is not None:
+            ratio = ref_toksec / ref_tflops
+
+            fig = ax.get_figure()
+            fig.canvas.draw()
+            yticks = ax.get_yticks()
+            ymin, ymax = ax.get_ylim()
+
+            annot_fs = 6.0 if compact else 7.0
+
+            for yt in yticks:
+                if yt < ymin or yt > ymax:
+                    continue
+                tok_val = yt * ratio
+                if tok_val < 0:
+                    continue
+                if tok_val >= 1000:
+                    tok_str = f"{tok_val/1000:.1f}K tok/s"
+                else:
+                    tok_str = f"{tok_val:.0f} tok/s"
+                ax.axhline(y=yt, color="0.80", lw=0.4, ls=":",
+                           zorder=0)
+                ax.annotate(
+                    tok_str,
+                    xy=(0.0, yt), xycoords=("axes fraction", "data"),
+                    fontsize=annot_fs, color="0.50",
+                    ha="left", va="bottom",
+                    xytext=(3, 1), textcoords="offset points",
+                )
+
     # ── Build legend handles ────────────────────────────────────
     seen = set()
     legend_handles, legend_labels = [], []
