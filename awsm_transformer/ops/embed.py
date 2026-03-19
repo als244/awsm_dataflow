@@ -14,8 +14,8 @@ def embedding_bwd_kernel(
     stride_gw_row, stride_gw_col,
     # Scale factor
     scale,
-    # Meta-parameters
-    T: tl.constexpr,      
+    T,
+    # Meta-parameters   
     D: tl.constexpr,  
     BLOCK_SIZE_D: tl.constexpr
 ):
@@ -112,7 +112,7 @@ def awsm_embedding_bwd(grad_output, indices, grad_weight, scale=1.0):
         grad_output.stride(0), grad_output.stride(1),
         grad_weight.stride(0), grad_weight.stride(1),
         scale,  # Pass scale factor to kernel
-        T=T, 
+        T, 
         D=D,
         BLOCK_SIZE_D=BLOCK_SIZE_D
     )
