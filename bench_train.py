@@ -57,9 +57,9 @@ torch.cuda.set_device(DEVICE_ID)
 # Fixed constants
 # ---------------------------------------------------------------------------
 
-TO_PROFILE_BACKEND      = True
+TO_PROFILE_BACKEND      = False
 TO_PROFILE_TORCH_MEMORY = False
-TO_SAVE_ERROR           = True
+TO_SAVE_ERROR           = False
 
 MAX_TOKENS_PER_STEP = SEQ_LEN * SEQS_PER_STEP
 MIN_SEQ_LEN         = SEQ_LEN
@@ -363,11 +363,13 @@ while loss_smoothed is None or loss_smoothed > LOSS_THRESHOLD:
     step_stats[step_num] = cur_step_stats
     dashboard.log(cur_step_stats)
 
+    """
     pickle.dump(train_seqs, open(f"{SAVE_MODEL_PATH}/train_seqs/step_{step_num}.pkl", "wb"))
 
     if model_dims["num_routed_experts"] > 0:
         all_expert_hist = {layer_id: model_layers[layer_id].expert_hist for layer_id in local_config["local_layer_ids"]}
         pickle.dump(all_expert_hist, open(f"{SAVE_MODEL_PATH}/expert_hists/step_{step_num}.pkl", "wb"))
+    """
 
     step_save_path = f"{SAVE_MODEL_PATH}/step_{step_num}"
     if (step_num in SAVE_STEPS) or (SAVE_CHECKPOINT_FREQ > 0 and step_num % SAVE_CHECKPOINT_FREQ == 0) or error_step:
