@@ -61,10 +61,10 @@ except Exception as e:
     _nvtxlib = None
 
 
-def start_profile(self):
+def start_profile():
     return _cudart.cudaProfilerStart()
     
-def stop_profile(self):
+def stop_profile():
     return _cudart.cudaProfilerStop()
 
 
