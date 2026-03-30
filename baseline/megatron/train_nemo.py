@@ -204,7 +204,7 @@ def main():
         num_attention_heads=args.num_attention_heads,
         num_query_groups=args.num_query_groups,
         seq_length=args.seq_length,
-        normalization="rmsnorm",
+        normalization="RMSNorm",
         position_embedding_type="rope",
         rotary_base=args.rotary_base,
         make_vocab_size_divisible_by=128,
