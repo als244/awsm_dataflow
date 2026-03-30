@@ -219,7 +219,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
             "COMPATIBLE with --recompute-granularity selective."
         ),
     )
-    fg_offload.add_argument("--fine-grained-activation-offloading", action="store_true", default=True)
+    fg_offload.add_argument("--fine-grained-activation-offloading", action="store_true", default=False)
     fg_offload.add_argument(
         "--offload-modules", nargs="+", default=None,
         choices=["attn_norm", "qkv_linear", "core_attn", "attn_proj",
@@ -235,7 +235,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
     # ----- Activation recomputation -----
     recomp = p.add_argument_group("Activation recomputation (checkpointing)")
     recomp.add_argument(
-        "--recompute-granularity", type=str, default="selective",
+        "--recompute-granularity", type=str, default=None,
         choices=["selective", "full"],
     )
     recomp.add_argument(
@@ -309,7 +309,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
 
     # ---- Derived defaults ----
     if args.cpu_offloading_num_layers is None:
-        args.cpu_offloading_num_layers = args.num_layers - 1
+        args.cpu_offloading_num_layers = args.num_layers - 2
 
     # ---- Validation ----
     if args.cpu_offloading and args.fine_grained_activation_offloading:
