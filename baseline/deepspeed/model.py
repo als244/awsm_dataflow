@@ -17,6 +17,8 @@ from liger_kernel.transformers.fused_linear_cross_entropy import LigerFusedLinea
 
 from liger_kernel.transformers.swiglu import LigerSwiGLUMLP
 
+from chunked_ce import chunked_linear_cross_entropy
+
 from scattermoe.mlp import MLP, GLUMLP
 
 from attention import do_attention
@@ -233,7 +235,8 @@ class Model(nn.Module):
 
 
         nvtx.range_push("Output Projection and Cross Entropy Loss")
-        loss = self.loss_fn(self.output.weight, h.view(-1, self.model_dim), labels.view(-1))
+        #loss = self.loss_fn(self.output.weight, h.view(-1, self.model_dim), labels.view(-1))
+        loss = chunked_linear_cross_entropy(h, self.output.weight, labels.view(-1)) 
         nvtx.range_pop()
         
         return loss

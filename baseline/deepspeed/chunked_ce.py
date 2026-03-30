@@ -3,7 +3,7 @@ import torch.nn.functional as F
 
 class ChunkedLinearCrossEntropyFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, weight, labels, chunk_size=4096, ignore_index=-100):
+    def forward(ctx, x, weight, labels, chunk_size=1024, ignore_index=-100):
         """
         Args:
             x: Input hidden states, shape (N, D)
@@ -106,7 +106,7 @@ class ChunkedLinearCrossEntropyFunction(torch.autograd.Function):
 # =========================================================================
 # The API wrapper that matches the expected function call in model_quack.py
 # =========================================================================
-def chunked_linear_cross_entropy(x, weight, labels, chunk_size=4096, ignore_index=-100):
+def chunked_linear_cross_entropy(x, weight, labels, chunk_size=1024, ignore_index=-100):
     return ChunkedLinearCrossEntropyFunction.apply(x, weight, labels, chunk_size, ignore_index)
 
 # --- Quick Verification Test ---
