@@ -98,8 +98,8 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
                       help="Number of query attention heads (default: 32)")
     arch.add_argument("--num-query-groups", type=int, default=8,
                       help="Number of KV heads for GQA (default: 8)")
-    arch.add_argument("--seq-length", type=int, default=65536,
-                      help="Sequence length (default: 65536)")
+    arch.add_argument("--seq-length", type=int, default=4096,
+                      help="Sequence length (default: 4096)")
     arch.add_argument("--vocab-size", type=int, default=128256,
                       help="Vocabulary size (default: 128256, Llama3 tokenizer)")
     arch.add_argument("--rotary-base", type=float, default=500000,
@@ -287,9 +287,9 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
     # ----- Training -----
     train_g = p.add_argument_group("Training")
     train_g.add_argument("--micro-batch-size", type=int, default=1, help="Micro batch size (default: 1)")
-    train_g.add_argument("--gradient-accumulation-steps", type=int, default=4,
-                         help="Gradient accumulation steps (default: 4)")
-    train_g.add_argument("--num-iters", type=int, default=100, help="Number of training iterations (default: 100)")
+    train_g.add_argument("--gradient-accumulation-steps", type=int, default=16,
+                         help="Gradient accumulation steps (default: 16)")
+    train_g.add_argument("--num-iters", type=int, default=5, help="Number of training iterations (default: 5)")
     train_g.add_argument("--log-interval", type=int, default=1, help="Log every N iterations (default: 1)")
 
     args = p.parse_args()
