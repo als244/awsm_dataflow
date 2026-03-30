@@ -36,6 +36,16 @@ import time
 import torch
 import torch.distributed as dist
 
+import ctypes
+_cudart = ctypes.CDLL('libcudart.so')
+
+def start_profile():
+    return _cudart.cudaProfilerStart()
+    
+def stop_profile():
+    return _cudart.cudaProfilerStop()
+
+
 
 # ===========================================================================
 # Model dims loading
@@ -587,6 +597,9 @@ def main():
         position_ids = position_ids.unsqueeze(0).expand(args.micro_batch_size, -1)
         return tokens, position_ids, labels
 
+    ### Indicate to cuda profiling API to start
+    start_profile()
+
     model.train()
 
     for iteration in range(1, args.num_iters + 1):
@@ -635,6 +648,9 @@ def main():
 
     if rank == 0:
         print("\nTraining complete.")
+
+    ### Indicate to cuda profiling API to stop
+    stop_profile()
 
     # ----- Cleanup -----
     parallel_state.destroy_model_parallel()
