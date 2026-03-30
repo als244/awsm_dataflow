@@ -50,7 +50,7 @@ import sys
 import time
 import torch
 import torch.distributed as dist
-
+import ctypes
 
 _cudart = ctypes.CDLL('libcudart.so')
 
