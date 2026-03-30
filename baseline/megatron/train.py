@@ -52,6 +52,22 @@ import torch
 import torch.distributed as dist
 
 
+_cudart = ctypes.CDLL('libcudart.so')
+
+try:
+    _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
+except Exception as e:
+    print(f"Error nvtx lib: {e}")
+    _nvtxlib = None
+
+
+def start_profile(self):
+    return _cudart.cudaProfilerStart()
+    
+def stop_profile(self):
+    return _cudart.cudaProfilerStop()
+
+
 # ===========================================================================
 # Argument parsing
 # ===========================================================================
@@ -575,6 +591,9 @@ def main():
         position_ids = position_ids.unsqueeze(0).expand(args.micro_batch_size, -1)
         return tokens, position_ids, labels
 
+
+    start_profile()
+
     model.train()
 
     for iteration in range(1, args.num_iters + 1):
@@ -627,6 +646,8 @@ def main():
 
     if rank == 0:
         print("\nTraining complete.")
+    
+    stop_profile()
 
     # ----- Cleanup -----
     parallel_state.destroy_model_parallel()
