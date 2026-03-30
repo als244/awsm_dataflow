@@ -177,7 +177,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
 
     # ----- TE layer-level CPU offloading -----
     ### NOTE: --cpu_offloading-weights should have NO impact; deprecated
-    ### cpu-offloading = True implies offloading all activations; not compatible with any recompuation settings...
+    ### cpu-offloading = True implies offloading all activations; not compatible with any recompuation settings
     te_offload = p.add_argument_group(
         "TE layer-level CPU offloading",
         description=(
@@ -201,7 +201,8 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
         ),
     )
     fg_offload.add_argument("--fine-grained-activation-offloading", action="store_true", default=True)
-    fg_offload.add_argument("--offload-modules", nargs="+", default=["qkv_linear", "core_attn", "attn_proj"],
+    fg_offload.add_argument(
+        "--offload-modules", nargs="+", default=None,
         choices=["attn_norm", "qkv_linear", "core_attn", "attn_proj",
                  "mlp_norm", "expert_fc1", "moe_act"],
         help=(
@@ -219,7 +220,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
         choices=["selective", "full"],
     )
     recomp.add_argument(
-        "--recompute-modules", nargs="+", default=["core_attn", "mlp", "layernorm"],
+        "--recompute-modules", nargs="+", default=None,
         choices=["core_attn", "mlp", "moe", "layernorm", "moe_act", "mla_up_proj"],
         help=(
             "Submodules to recompute (with --recompute-granularity selective). "
