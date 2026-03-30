@@ -14,7 +14,7 @@ import ctypes
 
 import json
 
-from model import Model, ModelArgs
+from model_quack import Model, ModelArgs
 
 _cudart = ctypes.CDLL('libcudart.so')
 
