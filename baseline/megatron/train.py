@@ -184,7 +184,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
             "attn_proj (attention output projection input), "
             "mlp_norm (MLP layernorm input), "
             "expert_fc1 (MoE expert first linear — MoE only), "
-            "moe_act (MoE activation — MoE only),
+            "moe_act (MoE activation — MoE only), "
             "Default: [qkv_linear, core_attn, attn_proj]"
         ),
     )
