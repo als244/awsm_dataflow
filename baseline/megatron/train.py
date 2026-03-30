@@ -642,9 +642,7 @@ def main():
                 f"Grad norm: {grad_norm} | "
                 f"Step: {step_time_ms:.0f} ms | "
                 f"Throughput: {throughput:.0f} tok/s | "
-                f"GPU mem: {gpu_gb:.2f}/{gpu_res_gb:.2f} GB | "
-                f"Update: {'yes' if update_successful else 'skipped (nan/inf)'}"
-            )
+                f"GPU mem: {gpu_gb:.2f}/{gpu_res_gb:.2f} GiB", flush=True)
 
     if rank == 0:
         print("\nTraining complete.")
