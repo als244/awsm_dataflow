@@ -156,7 +156,6 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
     #
     # Requires:
     #   - TE layer spec (Transformer Engine implementation)
-    #   - TE >= 2.10.0: env NVTE_CPU_OFFLOAD_V1=1 (auto-set by this script)
     #
     # Source: megatron/core/pipeline_parallel/fine_grained_activation_offload.py
     #         megatron/core/transformer/attention.py (per-module flags)
@@ -336,12 +335,6 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
 
 def main():
     args = parse_args()
-
-    # --- Set NVTE env var for fine-grained offloading with TE >= 2.10 ---
-    # This prevents TE's cpu_offload context from also moving weights,
-    # which would conflict with the fine-grained activation-only approach.
-    if args.fine_grained_activation_offloading:
-        os.environ["NVTE_CPU_OFFLOAD_V1"] = "1"
 
     # ----- 1. Bootstrap torch.distributed -----
     if not dist.is_initialized():
