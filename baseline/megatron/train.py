@@ -179,7 +179,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
                        help="Per-expert FFN hidden size")
     moe_g.add_argument("--moe-shared-expert-intermediate-size", type=int, default=None,
                        help="Shared expert intermediate size (0 = no shared expert)")
-    moe_g.add_argument("--moe-grouped-gemm", action="store_true", default=False,
+    moe_g.add_argument("--moe-grouped-gemm", action="store_true", default=True,
                        help="Enable grouped GEMM for MoE experts")
 
     # ----- TE layer-level CPU offloading -----
