@@ -14,7 +14,9 @@ import ctypes
 
 import json
 
-from model_quack import Model, ModelArgs
+from model import Model, ModelArgs
+
+os.environ["DS_SKIP_CUDA_CHECK"] = "1"
 
 _cudart = ctypes.CDLL('libcudart.so')
 
