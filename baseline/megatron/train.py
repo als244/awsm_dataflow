@@ -506,70 +506,70 @@ def main():
 
     # ----- 8. Print config summary -----
     if rank == 0:
-        print("=" * 70)
-        print("Llama3-8B Training — Configurable Memory Optimization")
-        print("=" * 70)
+        print("=" * 70, flush=True)
+        print("Llama3-8B Training — Configurable Memory Optimization", flush=True)
+        print("=" * 70, flush=True)
 
-        print(f"  Layers:              {args.num_layers}")
-        print(f"  Hidden size:         {args.hidden_size}")
-        print(f"  FFN hidden size:     {args.ffn_hidden_size}")
-        print(f"  Query heads:         {args.num_attention_heads}")
-        print(f"  KV heads:            {args.num_query_groups}")
-        print(f"  Head dim:            {args.hidden_size // args.num_attention_heads}")
-        print(f"  Vocab size:          {args.vocab_size}")
-        print(f"  Sequence length:     {args.seq_length}")
-        print(f"  Micro batch size:    {args.micro_batch_size}")
-        print(f"  Grad accum steps:    {args.gradient_accumulation_steps}")
-        print(f"  Precision:           bf16")
+        print(f"  Layers:              {args.num_layers}", flush=True)
+        print(f"  Hidden size:         {args.hidden_size}", flush=True)
+        print(f"  FFN hidden size:     {args.ffn_hidden_size}", flush=True)
+        print(f"  Query heads:         {args.num_attention_heads}", flush=True)
+        print(f"  KV heads:            {args.num_query_groups}", flush=True)
+        print(f"  Head dim:            {args.hidden_size // args.num_attention_heads}", flush=True)
+        print(f"  Vocab size:          {args.vocab_size}", flush=True)
+        print(f"  Sequence length:     {args.seq_length}", flush=True)
+        print(f"  Micro batch size:    {args.micro_batch_size}", flush=True)
+        print(f"  Grad accum steps:    {args.gradient_accumulation_steps}", flush=True)
+        print(f"  Precision:           bf16", flush=True)
 
-        print("-" * 70)
-        print("  ACTIVATION MEMORY STRATEGY:")
+        print("-" * 70, flush=True)
+        print("  ACTIVATION MEMORY STRATEGY:", flush=True)
         if args.cpu_offloading:
-            print(f"    TE layer offload:  ON")
-            print(f"      offload acts:    {args.cpu_offloading_activations}")
-            print(f"      offload weights: {args.cpu_offloading_weights}")
-            print(f"      double buffer:   {not args.no_cpu_offloading_double_buffering}")
-            print(f"      num layers:      {args.cpu_offloading_num_layers}")
+            print(f"    TE layer offload:  ON", flush=True)
+            print(f"      offload acts:    {args.cpu_offloading_activations}", flush=True)
+            print(f"      offload weights: {args.cpu_offloading_weights}", flush=True)
+            print(f"      double buffer:   {not args.no_cpu_offloading_double_buffering}", flush=True)
+            print(f"      num layers:      {args.cpu_offloading_num_layers}", flush=True)
         elif args.fine_grained_activation_offloading:
-            print(f"    Fine-grained:      ON")
-            print(f"      offload modules: {args.offload_modules}")
+            print(f"    Fine-grained:      ON", flush=True)
+            print(f"      offload modules: {args.offload_modules}", flush=True)
         else:
-            print(f"    Offloading:        OFF")
+            print(f"    Offloading:        OFF", flush=True)
 
         if args.recompute_granularity:
-            print(f"    Recompute:         {args.recompute_granularity}")
+            print(f"    Recompute:         {args.recompute_granularity}", flush=True)
             if args.recompute_granularity == "selective":
-                print(f"      modules:         {args.recompute_modules}")
+                print(f"      modules:         {args.recompute_modules}", flush=True)
             else:
-                print(f"      method:          {args.recompute_method}")
-                print(f"      num layers:      {args.recompute_num_layers}")
+                print(f"      method:          {args.recompute_method}", flush=True)
+                print(f"      num layers:      {args.recompute_num_layers}", flush=True)
         else:
-            print(f"    Recompute:         OFF")
+            print(f"    Recompute:         OFF", flush=True)
 
-        print("-" * 70)
-        print("  OPTIMIZER:")
-        print(f"    CPU offload:       {optimizer_cpu_offload}")
+        print("-" * 70, flush=True)
+        print("  OPTIMIZER:", flush=True)
+        print(f"    CPU offload:       {optimizer_cpu_offload}", flush=True)
         if optimizer_cpu_offload:
-            print(f"      fraction:        {args.optimizer_offload_fraction}")
-            print(f"      overlap D2H/H2D: {not args.no_overlap_cpu_optimizer}")
-        print(f"    Precision-aware:   {use_precision_aware}")
+            print(f"      fraction:        {args.optimizer_offload_fraction}", flush=True)
+            print(f"      overlap D2H/H2D: {not args.no_overlap_cpu_optimizer}", flush=True)
+        print(f"    Precision-aware:   {use_precision_aware}", flush=True)
         if use_precision_aware:
-            print(f"      master params:   bf16")
-            print(f"      exp_avg:         bf16")
-            print(f"      exp_avg_sq:      bf16")
-        print(f"    Distributed optim: {use_dist_optim}")
+            print(f"      master params:   bf16", flush=True)
+            print(f"      exp_avg:         bf16", flush=True)
+            print(f"      exp_avg_sq:      bf16", flush=True)
+        print(f"    Distributed optim: {use_dist_optim}", flush=True)
 
-        print("=" * 70)
+        print("=" * 70, flush=True)
 
         num_params = sum(p.numel() for p in model.parameters())
         num_params_b = num_params / 1e9
         optim_bytes = 6 if use_precision_aware else 12
-        print(f"\n  Parameters: {num_params:,} ({num_params_b:.2f}B)")
-        print(f"  Model params (bf16, GPU):         ~{num_params * 2 / 1e9:.1f} GB")
+        print(f"\n  Parameters: {num_params:,} ({num_params_b:.2f}B)", flush=True)
+        print(f"  Model params (bf16, GPU):         ~{num_params * 2 / 1e9:.1f} GB", flush=True)
         print(f"  Optimizer states ({'bf16' if use_precision_aware else 'fp32'}, "
               f"{'CPU' if optimizer_cpu_offload else 'GPU'}):  "
-              f"~{num_params * optim_bytes / 1e9:.1f} GB")
-        print(f"  DDP grad buffer (bf16, GPU):      ~{num_params * 2 / 1e9:.1f} GB")
+              f"~{num_params * optim_bytes / 1e9:.1f} GB", flush=True)
+        print(f"  DDP grad buffer (bf16, GPU):      ~{num_params * 2 / 1e9:.1f} GB", flush=True)
         print()
 
     # ----- 9. Training loop -----
@@ -635,11 +635,11 @@ def main():
                 f"Step: {step_time_ms:.0f} ms | "
                 f"Throughput: {throughput:.0f} tok/s | "
                 f"GPU mem: {gpu_gb:.2f}/{gpu_res_gb:.2f} GiB | "
-                f"Update: {'yes' if update_successful else 'skipped (nan/inf)'}"
+                f"Update: {'yes' if update_successful else 'skipped (nan/inf)'}", flush=True
             )
 
     if rank == 0:
-        print("\nTraining complete.")
+        print("\nTraining complete.", flush=True)
     
     stop_profile()
 
