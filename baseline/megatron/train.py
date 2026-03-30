@@ -172,7 +172,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
     fg_offload.add_argument("--fine-grained-activation-offloading", action="store_true", default=True,
                             help="Enable fine-grained (module-level) activation offloading")
     fg_offload.add_argument(
-        "--offload-modules", nargs="+", default=[ "qkv_linear", "core_attn", "attn_proj", "expert_fc1"],
+        "--offload-modules", nargs="+", default=["qkv_linear", "core_attn", "attn_proj"],
         choices=["attn_norm", "qkv_linear", "core_attn", "attn_proj",
                  "mlp_norm", "expert_fc1", "moe_act"],
         help=(
@@ -184,7 +184,8 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
             "attn_proj (attention output projection input), "
             "mlp_norm (MLP layernorm input), "
             "expert_fc1 (MoE expert first linear — MoE only), "
-            "moe_act (MoE activation — MoE only)"
+            "moe_act (MoE activation — MoE only),
+            "Default: [qkv_linear, core_attn, attn_proj]"
         ),
     )
 
@@ -218,7 +219,7 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
         ),
     )
     recomp.add_argument(
-        "--recompute-modules", nargs="+", default=["core_attn", "mlp", "moe", "layernorm", "moe_act", "mla_up_proj"],
+        "--recompute-modules", nargs="+", default=["core_attn", "mlp", "layernorm"],
         choices=["core_attn", "mlp", "moe", "layernorm", "moe_act", "mla_up_proj"],
         help=(
             "Submodules to recompute (used with --recompute-granularity selective). "
@@ -227,9 +228,9 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
             "mlp (dense MLP), moe (MoE layer). "
             "Output-discarding (discard output, recompute on backward): "
             "layernorm (input + pre_mlp layernorms — cheap), "
-            "moe_act (GroupedMLP activation), "
-            "mla_up_proj (Multi-Latent Attention up projection + RoPE). "
-            "Default: core_attn"
+            "moe_act (MoE only: GroupedMLP activation), "
+            "mla_up_proj (MLA only: Multi-Latent Attention up projection + RoPE). "
+            "Default: [core_attn, mlp, layernorm]"
         ),
     )
     recomp.add_argument(
