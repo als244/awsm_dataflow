@@ -168,13 +168,15 @@ Constraint summary (enforced by TransformerConfig.__post_init__):
     # ----- Model architecture (overrides for JSON values) -----
     # Defaults are None so we can detect whether user explicitly set them
     arch = p.add_argument_group("Model architecture (overrides JSON values)")
+
+    arch.add_argument("--seq-length", type=int, default=4096,
+                      help="Sequence length (default: 4096)")
+                      
     arch.add_argument("--num-layers", type=int, default=None)
     arch.add_argument("--hidden-size", type=int, default=None)
     arch.add_argument("--ffn-hidden-size", type=int, default=None)
     arch.add_argument("--num-attention-heads", type=int, default=None)
     arch.add_argument("--num-query-groups", type=int, default=None)
-    arch.add_argument("--seq-length", type=int, default=4096,
-                      help="Sequence length (default: 4096)")
     arch.add_argument("--vocab-size", type=int, default=None)
     arch.add_argument("--rotary-base", type=float, default=500000,
                       help="RoPE base frequency (default: 500000)")
