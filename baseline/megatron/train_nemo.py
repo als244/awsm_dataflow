@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+"""
+NeMo-Megatron Core training with Chunked Cross Entropy.
+
+Supports both dense and MoE architectures loaded from a model_dims.json file.
+All offloading and recomputation options are exposed as command-line arguments.
+
+Examples:
+  torchrun --nproc_per_node=1 train_nemo.py --model llama3_8B --cross-entropy-chunk-size 512
+"""
+
+import argparse
+import json
+import os
+import ctypes
+import time
+import torch
+import pytorch_lightning as pl
+from torch.utils.data import Dataset, DataLoader
+from omegaconf import OmegaConf
+
+# --- NeMo Imports ---
+from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import MegatronGPTModel
+from nemo.utils.exp_manager import exp_manager
+
+_cudart = ctypes.CDLL('libcudart.so')
+
+def start_profile():
+    return _cudart.cudaProfilerStart()
+    
+def stop_profile():
+    return _cudart.cudaProfilerStop()
+
+
+# ===========================================================================
+# Model dims loading
+# ===========================================================================
+
+def load_model_dims(json_path: str) -> dict:
+    with open(json_path, "r") as f:
+        return json.load(f)
+
+def is_moe_model(dims: dict) -> bool:
+    return dims.get("num_routed_experts", 0) > 0
+
+def apply_model_dims(args: argparse.Namespace, dims: dict) -> None:
+    moe = is_moe_model(dims)
+
+    def set_if_default(attr, value):
+        if getattr(args, attr) is None:
+            setattr(args, attr, value)
+
+    set_if_default("num_layers", dims["n_layers"])
+    set_if_default("hidden_size", dims["d_model"])
+    set_if_default("ffn_hidden_size", dims["expert_dim"])
+    set_if_default("num_attention_heads", dims["n_heads"])
+    set_if_default("num_query_groups", dims["n_kv_heads"])
+    set_if_default("vocab_size", dims["vocab_size"])
+
+    if moe:
+        set_if_default("num_moe_experts", dims["num_routed_experts"])
+        set_if_default("moe_router_topk", dims["top_k"])
+        set_if_default("moe_ffn_hidden_size", dims["expert_dim"])
+        if dims.get("num_shared_experts", 0) > 0:
+            shared_size = dims["num_shared_experts"] * dims["expert_dim"]
+            set_if_default("moe_shared_expert_intermediate_size", shared_size)
+    else:
+        args.num_moe_experts = None
+        args.moe_router_topk = 0
+
+    args._is_moe = moe
+    args._model_name = args.model
+
+
+# ===========================================================================
+# Argument parsing
+# ===========================================================================
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    # ----- Training -----
+    train_g = p.add_argument_group("Training")
+    train_g.add_argument("--micro-batch-size", type=int, default=1)
+    train_g.add_argument("--gradient-accumulation-steps", type=int, default=4)
+    train_g.add_argument("--num-iters", type=int, default=5)
+    train_g.add_argument("--log-interval", type=int, default=1)
+    
+    # NEW: Chunked Cross Entropy parameter
+    train_g.add_argument("--cross-entropy-chunk-size", type=int, default=1024,
+                         help="Chunk size for LM head to save memory (default: 1024).")
+
+    # ----- Model selection -----
+    model_g = p.add_argument_group("Model selection")
+    model_g.add_argument("--model", type=str, default=None)
+    model_g.add_argument("--model-dims", type=str, default="model_dims.json")
+
+    # ----- Model architecture -----
+    arch = p.add_argument_group("Model architecture")
+    arch.add_argument("--seq-length", type=int, default=4096)
+    arch.add_argument("--num-layers", type=int, default=None)
+    arch.add_argument("--hidden-size", type=int, default=None)
+    arch.add_argument("--ffn-hidden-size", type=int, default=None)
+    arch.add_argument("--num-attention-heads", type=int, default=None)
+    arch.add_argument("--num-query-groups", type=int, default=None)
+    arch.add_argument("--vocab-size", type=int, default=None)
+    arch.add_argument("--rotary-base", type=float, default=500000)
+
+    # ----- MoE architecture -----
+    moe_g = p.add_argument_group("MoE architecture")
+    moe_g.add_argument("--num-moe-experts", type=int, default=None)
+    moe_g.add_argument("--moe-router-topk", type=int, default=None)
+    moe_g.add_argument("--moe-ffn-hidden-size", type=int, default=None)
+    moe_g.add_argument("--moe-shared-expert-intermediate-size", type=int, default=None)
+    moe_g.add_argument("--moe-grouped-gemm", action="store_true", default=False)
+
+    # ----- TE layer-level CPU offloading -----
+    te_offload = p.add_argument_group("TE layer-level CPU offloading")
+    te_offload.add_argument("--cpu-offloading", action="store_true", default=False)
+    te_offload.add_argument("--cpu-offloading-num-layers", type=int, default=None)
+    te_offload.add_argument("--cpu-offloading-activations", action="store_true", default=False)
+    te_offload.add_argument("--cpu-offloading-weights", action="store_true", default=False)
+    te_offload.add_argument("--no-cpu-offloading-double-buffering", action="store_true", default=False)
+
+    # ----- Fine-grained activation offloading -----
+    fg_offload = p.add_argument_group("Fine-grained activation offloading")
+    fg_offload.add_argument("--fine-grained-activation-offloading", action="store_true", default=True)
+    fg_offload.add_argument("--offload-modules", nargs="+", default=None)
+
+    # ----- Activation recomputation -----
+    recomp = p.add_argument_group("Activation recomputation")
+    recomp.add_argument("--recompute-granularity", type=str, default="selective", choices=["selective", "full"])
+    recomp.add_argument("--recompute-modules", nargs="+", default=None)
+    recomp.add_argument("--recompute-method", type=str, default=None, choices=["uniform", "block"])
+    recomp.add_argument("--recompute-num-layers", type=int, default=None)
+
+    # ----- Optimizer -----
+    optim = p.add_argument_group("Optimizer")
+    optim.add_argument("--lr", type=float, default=3e-4)
+    optim.add_argument("--min-lr", type=float, default=3e-5)
+    optim.add_argument("--weight-decay", type=float, default=0.1)
+    optim.add_argument("--adam-beta1", type=float, default=0.9)
+    optim.add_argument("--adam-beta2", type=float, default=0.95)
+    optim.add_argument("--adam-eps", type=float, default=1e-8)
+    optim.add_argument("--clip-grad", type=float, default=1.0)
+
+    # ----- Optimizer CPU offloading -----
+    optim_offload = p.add_argument_group("Optimizer CPU offloading")
+    optim_offload.add_argument("--no-optimizer-cpu-offload", action="store_true", default=False)
+    optim_offload.add_argument("--optimizer-offload-fraction", type=float, default=1.0)
+    optim_offload.add_argument("--no-overlap-cpu-optimizer", action="store_true", default=False)
+    optim_offload.add_argument("--no-precision-aware-optimizer", action="store_true", default=False)
+
+    args = p.parse_args()
+
+    # ---- Load model dims from JSON ----
+    if args.model is not None:
+        if not os.path.exists(args.model_dims):
+            p.error(f"Model dims file not found: {args.model_dims}")
+        all_dims = load_model_dims(args.model_dims)
+        apply_model_dims(args, all_dims[args.model])
+    else:
+        args._is_moe = (args.num_moe_experts is not None and args.num_moe_experts > 0)
+        args._model_name = "custom"
+
+    # ---- Fill remaining None arch values with dense Llama defaults ----
+    arch_defaults = dict(
+        num_layers=12, hidden_size=4096, ffn_hidden_size=14336,
+        num_attention_heads=32, num_query_groups=8, vocab_size=128256,
+    )
+    for attr, default in arch_defaults.items():
+        if getattr(args, attr) is None:
+            setattr(args, attr, default)
+
+    # ---- Auto-select offload/recompute modules ----
+    if args.fine_grained_activation_offloading and args.offload_modules is None:
+        args.offload_modules = ["qkv_linear", "core_attn", "attn_proj", "expert_fc1"] if args._is_moe else ["qkv_linear", "core_attn", "attn_proj"]
+
+    if args.recompute_granularity == "selective" and args.recompute_modules is None:
+        args.recompute_modules = ["core_attn", "layernorm", "moe", "moe_act"] if args._is_moe else ["core_attn", "mlp", "layernorm"]
+
+    if args.cpu_offloading_num_layers is None:
+        args.cpu_offloading_num_layers = args.num_layers - 1
+
+    # ---- Validation Fixes ----
+    if args._is_moe and args.recompute_modules and "moe_act" in args.recompute_modules:
+        if not args.moe_grouped_gemm:
+            args.moe_grouped_gemm = True
+
+    return args
+
+
+# ===========================================================================
+# NeMo Configuration Builder
+# ===========================================================================
+def build_nemo_config(args):
+    """Translates the Argparse namespace into NeMo's nested dictionary format."""
+    
+    # 1. Base Model Config
+    model_cfg = {
+        "mcore_gpt": True,
+        "micro_batch_size": args.micro_batch_size,
+        "global_batch_size": args.micro_batch_size * args.gradient_accumulation_steps,
+        "tensor_model_parallel_size": 1,
+        "pipeline_model_parallel_size": 1,
+        
+        # Architecture
+        "encoder_seq_length": args.seq_length,
+        "max_position_embeddings": args.seq_length,
+        "num_layers": args.num_layers,
+        "hidden_size": args.hidden_size,
+        "ffn_hidden_size": args.ffn_hidden_size,
+        "num_attention_heads": args.num_attention_heads,
+        "num_query_groups": args.num_query_groups,
+        "normalization": "rmsnorm",
+        "position_embedding_type": "rope",
+        "rotary_base": args.rotary_base,
+        "do_layer_norm_weight_decay": False,
+        "make_vocab_size_divisible_by": 128,
+        
+        # CRITICAL: Bypasses strict NeMo tokenizer requirements for dummy runs
+        "override_vocab_size": args.vocab_size,
+        
+        # --------------------------------------------------------
+        # CHUNKED CROSS ENTROPY
+        # --------------------------------------------------------
+        "cross_entropy_chunk_size": args.cross_entropy_chunk_size,
+
+        # Precision
+        "megatron_amp_O2": True,
+        "bf16": True,
+        
+        # --------------------------------------------------------
+        # MEMORY, CHECKPOINTING, & OFFLOADING (FIXED)
+        # --------------------------------------------------------
+        "activations_checkpoint_granularity": args.recompute_granularity if args.recompute_granularity else None,
+        "activations_checkpoint_method": args.recompute_method,
+        "activations_checkpoint_num_layers": args.recompute_num_layers,
+        
+        # TE Layer-level offloading
+        "cpu_offloading": args.cpu_offloading,
+        "cpu_offloading_num_layers": args.cpu_offloading_num_layers,
+        "cpu_offloading_activations": args.cpu_offloading_activations,
+        "cpu_offloading_weights": args.cpu_offloading_weights,
+        "cpu_offloading_double_buffering": not args.no_cpu_offloading_double_buffering,
+        
+        # Fine-grained activation offloading
+        "fine_grained_activation_offloading": args.fine_grained_activation_offloading,
+        "offload_modules": args.offload_modules if args.fine_grained_activation_offloading else [],
+        
+        # Optimizer
+        "optim": {
+            "name": "distributed_fused_adam",
+            "lr": args.lr,
+            "weight_decay": args.weight_decay,
+            "betas": [args.adam_beta1, args.adam_beta2],
+            "eps": args.adam_eps,
+            
+            # Optimizer Offloading
+            "cpu_offload": not args.no_optimizer_cpu_offload,
+            "cpu_offload_fraction": args.optimizer_offload_fraction,
+            "overlap_cpu_optimizer_d2h_h2d": not args.no_overlap_cpu_optimizer,
+            "use_precision_aware_optimizer": not args.no_precision_aware_optimizer,
+        }
+    }
+
+    # 2. Inject MoE Parameters if applicable
+    if args._is_moe:
+        model_cfg.update({
+            "num_moe_experts": args.num_moe_experts,
+            "moe_router_topk": args.moe_router_topk,
+            "moe_grouped_gemm": args.moe_grouped_gemm,
+            "moe_router_load_balancing_type": "aux_loss",
+            "moe_aux_loss_coeff": 1e-2,
+        })
+        if args.moe_ffn_hidden_size:
+            model_cfg["moe_ffn_hidden_size"] = args.moe_ffn_hidden_size
+        if args.moe_shared_expert_intermediate_size:
+            model_cfg["moe_shared_expert_intermediate_size"] = args.moe_shared_expert_intermediate_size
+
+    # 3. Create full OmegaConf
+    cfg = OmegaConf.create({
+        "name": "megatron_gpt",
+        "trainer": {
+            "devices": int(os.environ.get("WORLD_SIZE", 1)),
+            "num_nodes": 1,
+            "accelerator": "gpu",
+            "max_steps": args.num_iters,
+            "accumulate_grad_batches": args.gradient_accumulation_steps,
+            "val_check_interval": args.num_iters + 1, 
+            "log_every_n_steps": args.log_interval,
+            "strategy": "ddp", 
+            "enable_model_summary": False,
+        },
+        "model": model_cfg
+    })
+    
+    return cfg
+
+
+# ===========================================================================
+# Dummy Data Generation for Lightning
+# ===========================================================================
+class DummyNeMoDataset(Dataset):
+    def __init__(self, vocab_size, seq_length, num_samples):
+        self.vocab_size = vocab_size
+        self.seq_length = seq_length
+        self.num_samples = num_samples
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        tokens = torch.randint(0, self.vocab_size, (self.seq_length,))
+        labels = torch.randint(0, self.vocab_size, (self.seq_length,))
+        position_ids = torch.arange(self.seq_length)
+        loss_mask = torch.ones(self.seq_length, dtype=torch.float32)
+        return {"tokens": tokens, "labels": labels, "position_ids": position_ids, "loss_mask": loss_mask}
+
+class DummyDataModule(pl.LightningDataModule):
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
+        total_samples = args.num_iters * args.gradient_accumulation_steps * args.micro_batch_size
+        self.dataset = DummyNeMoDataset(args.vocab_size, args.seq_length, total_samples)
+
+    def train_dataloader(self):
+        return DataLoader(self.dataset, batch_size=self.args.micro_batch_size, num_workers=2)
+
+
+# ===========================================================================
+# Main
+# ===========================================================================
+def main():
+    args = parse_args()
+
+    # Lightning handles the distributed environment automatically, 
+    # but we can print basic info from rank 0
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    if local_rank == 0:
+        print("=" * 70, flush=True)
+        model_type = "MoE" if args._is_moe else "Dense"
+        print(f"Training NeMo-Megatron: {args._model_name} ({model_type})", flush=True)
+        print(f"Chunked CE Size: {args.cross_entropy_chunk_size}", flush=True)
+        print("=" * 70, flush=True)
+
+    # 1. Build Configs
+    cfg = build_nemo_config(args)
+
+    # 2. Initialize Trainer
+    trainer = pl.Trainer(**cfg.trainer)
+    
+    # 3. Setup Experiment Manager (handles checkpointing/logging in NeMo)
+    exp_manager(trainer, {"exp_dir": "./nemo_experiments", "create_checkpoint_callback": False})
+
+    # 4. Initialize Model
+    model = MegatronGPTModel(cfg.model, trainer)
+
+    # 5. Initialize Data
+    datamodule = DummyDataModule(args)
+
+    # 6. Train with Profiler Wrappers
+    start_profile()
+    
+    trainer.fit(model, datamodule=datamodule)
+    
+    stop_profile()
+
+    if local_rank == 0:
+        print("\nTraining complete.", flush=True)
+
+
+if __name__ == "__main__":
+    main()
