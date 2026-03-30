@@ -211,9 +211,9 @@ def main():
         make_vocab_size_divisible_by=128,
         
         # Memory & Checkpointing mappings
-        activations_checkpoint_granularity=args.recompute_granularity if args.recompute_granularity else None,
-        activations_checkpoint_method=args.recompute_method,
-        activations_checkpoint_num_layers=args.recompute_num_layers,
+        recompute_granularity=args.recompute_granularity if args.recompute_granularity else None,
+        recompute_method=args.recompute_method,
+        recompute_num_layers=args.recompute_num_layers,
         
         # Offloading
         cpu_offloading=args.cpu_offloading,
