@@ -197,7 +197,6 @@ def main():
         print("=" * 70, flush=True)
 
     # --- 1. Model Configuration ---
-    # NeMo 2.0 uses Pythonic configs (no more massive OmegaConf dicts!)
     config_kwargs = dict(
         num_layers=args.num_layers,
         hidden_size=args.hidden_size,
@@ -210,7 +209,7 @@ def main():
         rotary_base=args.rotary_base,
         make_vocab_size_divisible_by=128,
         
-        # Memory & Checkpointing mappings
+        # Memory & Checkpointing mappings (FIXED TO NATIVE MEGATRON NAMES)
         recompute_granularity=args.recompute_granularity if args.recompute_granularity else None,
         recompute_method=args.recompute_method,
         recompute_num_layers=args.recompute_num_layers,
@@ -246,15 +245,27 @@ def main():
         gpt_config.cross_entropy_chunk_size = args.cross_entropy_chunk_size
 
     # --- 2. Data Module ---
-    # NeMo 2.0 has a native MockDataModule which removes the need to write your own
+    # FIXED: Removed 'vocab_size' from init arguments
     data = llm.MockDataModule(
         seq_length=args.seq_length,
         global_batch_size=args.micro_batch_size * args.gradient_accumulation_steps,
         micro_batch_size=args.micro_batch_size,
-        vocab_size=args.vocab_size,
     )
 
-    # --- 3. Optimizer Setup ---
+    # --- 3. Tokenizer Wrapper ---
+    # We must intercept NeMo's dummy tokenizer to report the true vocab size 
+    # so that memory benchmarks match your target architecture.
+    class DummyTokenizerWrapper:
+        def __init__(self, wrapped, target_vocab_size):
+            self.wrapped = wrapped
+            self.vocab_size = target_vocab_size
+            
+        def __getattr__(self, item):
+            return getattr(self.wrapped, item)
+            
+    custom_tokenizer = DummyTokenizerWrapper(data.tokenizer, args.vocab_size)
+
+    # --- 4. Optimizer Setup ---
     opt_config = OptimizerConfig(
         optimizer='adam',
         lr=args.lr,
@@ -264,10 +275,10 @@ def main():
     )
     optim = nl.MegatronOptimizerModule(config=opt_config)
 
-    # --- 4. Initialize Model ---
-    model = llm.GPTModel(gpt_config, tokenizer=data.tokenizer)
+    # --- 5. Initialize Model ---
+    model = llm.GPTModel(gpt_config, tokenizer=custom_tokenizer)
 
-    # --- 5. Trainer & Strategy ---
+    # --- 6. Trainer & Strategy ---
     strategy = nl.MegatronStrategy(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=1,
@@ -290,7 +301,7 @@ def main():
     
     nemo_logger = nl.NeMoLogger(log_dir="./nemo_experiments")
 
-    # --- 6. Train ---
+    # --- 7. Train ---
     start_profile()
     
     # NeMo 2.0's single unified train command
