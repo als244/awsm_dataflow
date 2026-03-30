@@ -1,27 +1,24 @@
 #!/usr/bin/env python3
 """
-NeMo-Megatron Core training with Chunked Cross Entropy.
+NeMo 2.0 Megatron Core training with Chunked Cross Entropy.
 
 Supports both dense and MoE architectures loaded from a model_dims.json file.
 All offloading and recomputation options are exposed as command-line arguments.
 
 Examples:
-  torchrun --nproc_per_node=1 train_nemo.py --model llama3_8B --cross-entropy-chunk-size 512
+  torchrun --nproc_per_node=1 train_nemo2.py --model llama3_8B --cross-entropy-chunk-size 1024
 """
 
 import argparse
 import json
 import os
 import ctypes
-import time
 import torch
-import pytorch_lightning as pl
-from torch.utils.data import Dataset, DataLoader
-from omegaconf import OmegaConf
 
-# --- NeMo Imports ---
-from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import MegatronGPTModel
-from nemo.utils.exp_manager import exp_manager
+# --- NeMo 2.0 Imports ---
+import nemo.lightning as nl
+from nemo.collections import llm
+from megatron.core.optimizer import OptimizerConfig
 
 _cudart = ctypes.CDLL('libcudart.so')
 
@@ -85,10 +82,7 @@ def parse_args() -> argparse.Namespace:
     train_g.add_argument("--gradient-accumulation-steps", type=int, default=4)
     train_g.add_argument("--num-iters", type=int, default=5)
     train_g.add_argument("--log-interval", type=int, default=1)
-    
-    # NEW: Chunked Cross Entropy parameter
-    train_g.add_argument("--cross-entropy-chunk-size", type=int, default=1024,
-                         help="Chunk size for LM head to save memory (default: 1024).")
+    train_g.add_argument("--cross-entropy-chunk-size", type=int, default=1024)
 
     # ----- Model selection -----
     model_g = p.add_argument_group("Model selection")
@@ -103,7 +97,7 @@ def parse_args() -> argparse.Namespace:
     arch.add_argument("--ffn-hidden-size", type=int, default=None)
     arch.add_argument("--num-attention-heads", type=int, default=None)
     arch.add_argument("--num-query-groups", type=int, default=None)
-    arch.add_argument("--vocab-size", type=int, default=None)
+    arch.add_argument("--vocab-size", type=int, default=128256)
     arch.add_argument("--rotary-base", type=float, default=500000)
 
     # ----- MoE architecture -----
@@ -163,7 +157,7 @@ def parse_args() -> argparse.Namespace:
         args._is_moe = (args.num_moe_experts is not None and args.num_moe_experts > 0)
         args._model_name = "custom"
 
-    # ---- Fill remaining None arch values with dense Llama defaults ----
+    # ---- Fill remaining None arch values with defaults ----
     arch_defaults = dict(
         num_layers=12, hidden_size=4096, ffn_hidden_size=14336,
         num_attention_heads=32, num_query_groups=8, vocab_size=128256,
@@ -172,7 +166,6 @@ def parse_args() -> argparse.Namespace:
         if getattr(args, attr) is None:
             setattr(args, attr, default)
 
-    # ---- Auto-select offload/recompute modules ----
     if args.fine_grained_activation_offloading and args.offload_modules is None:
         args.offload_modules = ["qkv_linear", "core_attn", "attn_proj", "expert_fc1"] if args._is_moe else ["qkv_linear", "core_attn", "attn_proj"]
 
@@ -182,7 +175,6 @@ def parse_args() -> argparse.Namespace:
     if args.cpu_offloading_num_layers is None:
         args.cpu_offloading_num_layers = args.num_layers - 1
 
-    # ---- Validation Fixes ----
     if args._is_moe and args.recompute_modules and "moe_act" in args.recompute_modules:
         if not args.moe_grouped_gemm:
             args.moe_grouped_gemm = True
@@ -191,82 +183,50 @@ def parse_args() -> argparse.Namespace:
 
 
 # ===========================================================================
-# NeMo Configuration Builder
+# Main NeMo 2.0 Execution
 # ===========================================================================
-def build_nemo_config(args):
-    """Translates the Argparse namespace into NeMo's nested dictionary format."""
-    
-    # 1. Base Model Config
-    model_cfg = {
-        "mcore_gpt": True,
-        "micro_batch_size": args.micro_batch_size,
-        "global_batch_size": args.micro_batch_size * args.gradient_accumulation_steps,
-        "tensor_model_parallel_size": 1,
-        "pipeline_model_parallel_size": 1,
-        
-        # Architecture
-        "encoder_seq_length": args.seq_length,
-        "max_position_embeddings": args.seq_length,
-        "num_layers": args.num_layers,
-        "hidden_size": args.hidden_size,
-        "ffn_hidden_size": args.ffn_hidden_size,
-        "num_attention_heads": args.num_attention_heads,
-        "num_query_groups": args.num_query_groups,
-        "normalization": "rmsnorm",
-        "position_embedding_type": "rope",
-        "rotary_base": args.rotary_base,
-        "do_layer_norm_weight_decay": False,
-        "make_vocab_size_divisible_by": 128,
-        
-        # CRITICAL: Bypasses strict NeMo tokenizer requirements for dummy runs
-        "override_vocab_size": args.vocab_size,
-        
-        # --------------------------------------------------------
-        # CHUNKED CROSS ENTROPY
-        # --------------------------------------------------------
-        "cross_entropy_chunk_size": args.cross_entropy_chunk_size,
+def main():
+    args = parse_args()
 
-        # Precision
-        "megatron_amp_O2": True,
-        "bf16": True,
-        
-        # --------------------------------------------------------
-        # MEMORY, CHECKPOINTING, & OFFLOADING (FIXED)
-        # --------------------------------------------------------
-        "activations_checkpoint_granularity": args.recompute_granularity if args.recompute_granularity else None,
-        "activations_checkpoint_method": args.recompute_method,
-        "activations_checkpoint_num_layers": args.recompute_num_layers,
-        
-        # TE Layer-level offloading
-        "cpu_offloading": args.cpu_offloading,
-        "cpu_offloading_num_layers": args.cpu_offloading_num_layers,
-        "cpu_offloading_activations": args.cpu_offloading_activations,
-        "cpu_offloading_weights": args.cpu_offloading_weights,
-        "cpu_offloading_double_buffering": not args.no_cpu_offloading_double_buffering,
-        
-        # Fine-grained activation offloading
-        "fine_grained_activation_offloading": args.fine_grained_activation_offloading,
-        "offload_modules": args.offload_modules if args.fine_grained_activation_offloading else [],
-        
-        # Optimizer
-        "optim": {
-            "name": "distributed_fused_adam",
-            "lr": args.lr,
-            "weight_decay": args.weight_decay,
-            "betas": [args.adam_beta1, args.adam_beta2],
-            "eps": args.adam_eps,
-            
-            # Optimizer Offloading
-            "cpu_offload": not args.no_optimizer_cpu_offload,
-            "cpu_offload_fraction": args.optimizer_offload_fraction,
-            "overlap_cpu_optimizer_d2h_h2d": not args.no_overlap_cpu_optimizer,
-            "use_precision_aware_optimizer": not args.no_precision_aware_optimizer,
-        }
-    }
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    if local_rank == 0:
+        print("=" * 70, flush=True)
+        model_type = "MoE" if args._is_moe else "Dense"
+        print(f"Training NeMo 2.0: {args._model_name} ({model_type})", flush=True)
+        print(f"Chunked CE Size: {args.cross_entropy_chunk_size}", flush=True)
+        print("=" * 70, flush=True)
 
-    # 2. Inject MoE Parameters if applicable
+    # --- 1. Model Configuration ---
+    # NeMo 2.0 uses Pythonic configs (no more massive OmegaConf dicts!)
+    config_kwargs = dict(
+        num_layers=args.num_layers,
+        hidden_size=args.hidden_size,
+        ffn_hidden_size=args.ffn_hidden_size,
+        num_attention_heads=args.num_attention_heads,
+        num_query_groups=args.num_query_groups,
+        seq_length=args.seq_length,
+        normalization="rmsnorm",
+        position_embedding_type="rope",
+        rotary_base=args.rotary_base,
+        make_vocab_size_divisible_by=128,
+        
+        # Memory & Checkpointing mappings
+        activations_checkpoint_granularity=args.recompute_granularity if args.recompute_granularity else None,
+        activations_checkpoint_method=args.recompute_method,
+        activations_checkpoint_num_layers=args.recompute_num_layers,
+        
+        # Offloading
+        cpu_offloading=args.cpu_offloading,
+        cpu_offloading_num_layers=args.cpu_offloading_num_layers,
+        cpu_offloading_activations=args.cpu_offloading_activations,
+        cpu_offloading_weights=args.cpu_offloading_weights,
+        
+        fine_grained_activation_offloading=args.fine_grained_activation_offloading,
+        offload_modules=args.offload_modules if args.fine_grained_activation_offloading else [],
+    )
+
     if args._is_moe:
-        model_cfg.update({
+        config_kwargs.update({
             "num_moe_experts": args.num_moe_experts,
             "moe_router_topk": args.moe_router_topk,
             "moe_grouped_gemm": args.moe_grouped_gemm,
@@ -274,101 +234,79 @@ def build_nemo_config(args):
             "moe_aux_loss_coeff": 1e-2,
         })
         if args.moe_ffn_hidden_size:
-            model_cfg["moe_ffn_hidden_size"] = args.moe_ffn_hidden_size
+            config_kwargs["moe_ffn_hidden_size"] = args.moe_ffn_hidden_size
         if args.moe_shared_expert_intermediate_size:
-            model_cfg["moe_shared_expert_intermediate_size"] = args.moe_shared_expert_intermediate_size
+            config_kwargs["moe_shared_expert_intermediate_size"] = args.moe_shared_expert_intermediate_size
 
-    # 3. Create full OmegaConf
-    cfg = OmegaConf.create({
-        "name": "megatron_gpt",
-        "trainer": {
-            "devices": int(os.environ.get("WORLD_SIZE", 1)),
-            "num_nodes": 1,
-            "accelerator": "gpu",
-            "max_steps": args.num_iters,
-            "accumulate_grad_batches": args.gradient_accumulation_steps,
-            "val_check_interval": args.num_iters + 1, 
-            "log_every_n_steps": args.log_interval,
-            "strategy": "ddp", 
-            "enable_model_summary": False,
-        },
-        "model": model_cfg
-    })
+    # Initialize standard GPTConfig
+    gpt_config = llm.GPTConfig(**config_kwargs)
+
+    # Optional Chunked Cross Entropy parameter override if supported
+    if hasattr(gpt_config, 'cross_entropy_chunk_size'):
+        gpt_config.cross_entropy_chunk_size = args.cross_entropy_chunk_size
+
+    # --- 2. Data Module ---
+    # NeMo 2.0 has a native MockDataModule which removes the need to write your own
+    data = llm.MockDataModule(
+        seq_length=args.seq_length,
+        global_batch_size=args.micro_batch_size * args.gradient_accumulation_steps,
+        micro_batch_size=args.micro_batch_size,
+        vocab_size=args.vocab_size,
+    )
+
+    # --- 3. Optimizer Setup ---
+    opt_config = OptimizerConfig(
+        optimizer='adam',
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        bf16=not args.no_precision_aware_optimizer,
+        use_distributed_optimizer=not args.no_optimizer_cpu_offload,
+    )
+    optim = nl.MegatronOptimizerModule(config=opt_config)
+
+    # --- 4. Initialize Model ---
+    model = llm.GPTModel(gpt_config, tokenizer=data.tokenizer)
+
+    # --- 5. Trainer & Strategy ---
+    strategy = nl.MegatronStrategy(
+        tensor_model_parallel_size=1,
+        pipeline_model_parallel_size=1,
+        context_parallel_size=1,
+        sequence_parallel=False,
+    )
+
+    trainer = nl.Trainer(
+        devices=int(os.environ.get("WORLD_SIZE", 1)),
+        num_nodes=1,
+        accelerator="gpu",
+        max_steps=args.num_iters,
+        accumulate_grad_batches=args.gradient_accumulation_steps,
+        val_check_interval=args.num_iters + 1, 
+        log_every_n_steps=args.log_interval,
+        strategy=strategy,
+        plugins=nl.MegatronMixedPrecision(precision="bf16-mixed"),
+        enable_model_summary=False,
+    )
     
-    return cfg
+    nemo_logger = nl.NeMoLogger(log_dir="./nemo_experiments")
 
-
-# ===========================================================================
-# Dummy Data Generation for Lightning
-# ===========================================================================
-class DummyNeMoDataset(Dataset):
-    def __init__(self, vocab_size, seq_length, num_samples):
-        self.vocab_size = vocab_size
-        self.seq_length = seq_length
-        self.num_samples = num_samples
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        tokens = torch.randint(0, self.vocab_size, (self.seq_length,))
-        labels = torch.randint(0, self.vocab_size, (self.seq_length,))
-        position_ids = torch.arange(self.seq_length)
-        loss_mask = torch.ones(self.seq_length, dtype=torch.float32)
-        return {"tokens": tokens, "labels": labels, "position_ids": position_ids, "loss_mask": loss_mask}
-
-class DummyDataModule(pl.LightningDataModule):
-    def __init__(self, args):
-        super().__init__()
-        self.args = args
-        total_samples = args.num_iters * args.gradient_accumulation_steps * args.micro_batch_size
-        self.dataset = DummyNeMoDataset(args.vocab_size, args.seq_length, total_samples)
-
-    def train_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.args.micro_batch_size, num_workers=2)
-
-
-# ===========================================================================
-# Main
-# ===========================================================================
-def main():
-    args = parse_args()
-
-    # Lightning handles the distributed environment automatically, 
-    # but we can print basic info from rank 0
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
-    if local_rank == 0:
-        print("=" * 70, flush=True)
-        model_type = "MoE" if args._is_moe else "Dense"
-        print(f"Training NeMo-Megatron: {args._model_name} ({model_type})", flush=True)
-        print(f"Chunked CE Size: {args.cross_entropy_chunk_size}", flush=True)
-        print("=" * 70, flush=True)
-
-    # 1. Build Configs
-    cfg = build_nemo_config(args)
-
-    # 2. Initialize Trainer
-    trainer = pl.Trainer(**cfg.trainer)
-    
-    # 3. Setup Experiment Manager (handles checkpointing/logging in NeMo)
-    exp_manager(trainer, {"exp_dir": "./nemo_experiments", "create_checkpoint_callback": False})
-
-    # 4. Initialize Model
-    model = MegatronGPTModel(cfg.model, trainer)
-
-    # 5. Initialize Data
-    datamodule = DummyDataModule(args)
-
-    # 6. Train with Profiler Wrappers
+    # --- 6. Train ---
     start_profile()
     
-    trainer.fit(model, datamodule=datamodule)
+    # NeMo 2.0's single unified train command
+    llm.train(
+        model=model,
+        data=data,
+        trainer=trainer,
+        log=nemo_logger,
+        tokenizer='data',
+        optim=optim,
+    )
     
     stop_profile()
 
     if local_rank == 0:
         print("\nTraining complete.", flush=True)
-
 
 if __name__ == "__main__":
     main()
