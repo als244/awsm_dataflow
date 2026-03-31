@@ -638,6 +638,9 @@ def determine_working_set_config(model_dims, max_seq_len, max_global_batch_token
 
         if best_option["gpu_act_slots"] == 1 and option["gpu_act_slots"] > 1:
             best_option = option
+
+        if best_option["gpu_act_slots"] < best_option["target_num_chunks"] and option["gpu_act_slots"] >= option["target_num_chunks"]:
+            best_option = option
         
         if best_option["n_gpu_layers"] == 1 and option["n_gpu_layers"] > 1:
             best_option = option

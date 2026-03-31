@@ -26,6 +26,7 @@ parser.add_argument("--max_steps",                 type=int,   default=10,      
 parser.add_argument("--max_gpu_mem_gib",            type=float, default=0,          help="Max GPU memory in GiB (0 = detect available capacity)")
 parser.add_argument("--max_host_mem_gib",           type=float, default=0,          help="Max host memory in GiB (0 = detect available capacity)")
 parser.add_argument("--min_chunk_size",            type=int,   default=None,          help="Minimum chunk size")
+parser.add_argument("--max_chunk_size",            type=int,   default=None,          help="Maximum chunk size")
 parser.add_argument("--max_tokens_per_round_limit",type=int,   default=None,          help="Max tokens per round limit")
 parser.add_argument("--use_muon",                  type=lambda x: x.lower() != 'false', default=True, help="Use Muon optimizer (default: True, pass --use_muon false to disable)")
 parser.add_argument("--model_choice",              type=str,   default="llama3_8B",   help="Model choice key from model_dims.json")
@@ -49,6 +50,7 @@ DASHBOARD_PORT             = args.dashboard_port
 ### hidden internal args from README
 FORCE_SAVED_ACT_LEVEL      = args.force_saved_act_level
 MIN_CHUNK_SIZE             = args.min_chunk_size
+MAX_CHUNK_SIZE             = args.max_chunk_size
 MAX_TOKENS_PER_ROUND_LIMIT = args.max_tokens_per_round_limit
 
 torch.cuda.set_device(DEVICE_ID)
@@ -150,6 +152,7 @@ working_set_config, chosen_hardware_env = determine_working_set_config(
     verbose=True,
     fixed_seq_len=True,
     min_chunk_size=MIN_CHUNK_SIZE,
+    max_chunk_size=MAX_CHUNK_SIZE,
     max_tokens_per_round_limit=MAX_TOKENS_PER_ROUND_LIMIT,
     max_gpu_mem_bytes=max_gpu_mem_bytes,
     max_host_mem_bytes=max_host_mem_bytes,
@@ -199,11 +202,8 @@ head_layer  = TransformerHead(model_dims, model_hyperparams)
 
 if model_dims["num_routed_experts"] > 0:
     secondary_compute_stream = torch.cuda.Stream(device=device)
-    try:
-        _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
-        _nvtxlib.nvtxNameCuStreamA(secondary_compute_stream.cuda_stream, b"Secondary Compute")
-    except Exception as e:
-        pass
+    _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
+    _nvtxlib.nvtxNameCuStreamA(secondary_compute_stream.cuda_stream, b"Secondary Compute")
     model_layers = [
         TransformerMoELayer(layer_id, model_dims, model_hyperparams, is_muon=USE_MUON, secondary_compute_stream=secondary_compute_stream)
         for layer_id in range(model_dims["n_layers"])
