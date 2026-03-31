@@ -32,7 +32,8 @@ parser = argparse.ArgumentParser(description="DeepSpeed Training")
 parser.add_argument('--zero_stage', type=int, default=None)
 parser.add_argument('--save_act_layer_frac', type=float, default=0, help="Fraction of layer activatons to avoid recomputation and leave on device, deafult is 0 (full layer-wise checkpointing)")
 parser.add_argument('--offload_act', type=bool, default=False, help="To offload act checkpoints to cpu (blocking, hurts perf)")
-parser.add_argument('--use_muon', type=bool, default=True, help="Set true to use muon optimizer, otherwise AdamW")
+### This has terrible performance, every bwd layer triggers blocking, paged data transfer of muon state to device and then to host causing severe idleness...
+parser.add_argument('--use_muon', type=bool, default=False, help="Set true to use muon optimizer, otherwise AdamW")
 parser.add_argument('--model_config', type=str, required=True)
 parser.add_argument('--seq_len', type=int, default=512, help='Sequence length for training')
 parser.add_argument('--seqs_per_batch', type=int, default=1)
@@ -115,11 +116,11 @@ ds_config = {
 if zero_stage and zero_stage != 0:
     ds_config['optimizer']['fp32_optimizer_states'] = False
     if zero_stage == 1:
-        ds_config['zero_optimization'] = {"stage": 1, "offload_optimizer": {"device": "cpu", "pin_memory": True}}
+        ds_config['zero_optimization'] = {"stage": 1, "offload_optimizer": {"device": "cpu", "pin_memory": True}, "reduce_scatter": False}
     elif zero_stage == 2:
-        ds_config['zero_optimization'] = {"stage": 2, "offload_optimizer": {"device": "cpu", "pin_memory": True}}
+        ds_config['zero_optimization'] = {"stage": 2, "offload_optimizer": {"device": "cpu", "pin_memory": True}, "reduce_scatter": False}
     elif zero_stage == 3:
-        ds_config['zero_optimization'] = {"stage": 3, "offload_optimizer": {"device": "cpu", "pin_memory": True}, "offload_param": {"device": "cpu", "pin_memory": True}}
+        ds_config['zero_optimization'] = {"stage": 3, "offload_optimizer": {"device": "cpu", "pin_memory": True}, "offload_param": {"device": "cpu", "pin_memory": True}, "reduce_scatter": False}
     else:
         print(f"Error. Zero Stage must be None, 1, 2, or 3...")
         exit(1)
@@ -140,6 +141,15 @@ def get_dummy_dataset(seq_length=512, total_tokens=2**24):
 # --- Initialization ---
 print("Initializing model and DeepSpeed...")
 model = Model(model_args)
+
+for name, param in model.named_parameters():
+    if "norm" in name or name == "tok_embeddings.weight" or name == "output.weight":
+        param.use_muon = False
+    else:
+        if use_muon:
+            param.use_muon = True
+        else:
+            param.use_muon = False
 
 # === CHANGE: Call the new function to get the dataset ===
 dummy_dataset = get_dummy_dataset(seq_length=args.seq_len)
