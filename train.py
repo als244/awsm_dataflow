@@ -138,9 +138,9 @@ MAX_GPU_MEM_BYTES = None
 MAX_HOST_MEM_BYTES = None
 
 if MAX_GPU_MEM_GIB is not None:
-    MAX_GPU_MEM_BYTES = MAX_GPU_MEM_GB * 1024 * 1024 * 1024
+    MAX_GPU_MEM_BYTES = MAX_GPU_MEM_GIB * 1024 * 1024 * 1024
 if MAX_HOST_MEM_GIB is not None:
-    MAX_HOST_MEM_BYTES = MAX_HOST_MEM_GB * 1024 * 1024 * 1024
+    MAX_HOST_MEM_BYTES = MAX_HOST_MEM_GIB * 1024 * 1024 * 1024
 
 
 working_set_config, chosen_hardware_env = determine_working_set_config(model_dims, MAX_SEQ_LEN, MAX_TOKENS_PER_STEP, training_config=training_config, device_id=DEVICE_ID, min_chunk_size=MIN_CHUNK_SIZE, verbose=True, max_gpu_mem_bytes=MAX_GPU_MEM_BYTES, max_host_mem_bytes=MAX_HOST_MEM_BYTES)
@@ -191,8 +191,11 @@ head_layer = TransformerHead(model_dims, model_hyperparams)
 
 if model_dims["num_routed_experts"] > 0:
     secondary_compute_stream = torch.cuda.Stream(device=device)
-    _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
-    _nvtxlib.nvtxNameCuStreamA(secondary_compute_stream.cuda_stream, b"Secondary Compute")
+    try:
+        _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
+        _nvtxlib.nvtxNameCuStreamA(secondary_compute_stream.cuda_stream, b"Secondary Compute")
+    except Exception as e:
+        pass
     model_layers = [TransformerMoELayer(layer_id, model_dims, model_hyperparams, is_muon=USE_MUON, secondary_compute_stream=secondary_compute_stream) for layer_id in range(model_dims["n_layers"])]
 else:
     model_layers = [TransformerLayer(layer_id, model_dims, model_hyperparams, is_muon=USE_MUON) for layer_id in range(model_dims["n_layers"])]
