@@ -16,7 +16,10 @@ import json
 
 from model import Model, ModelArgs
 
+from select_bins import select_bins
+
 os.environ["DS_SKIP_CUDA_CHECK"] = "1"
+os.environ["PYTORCH_ALLOC_CONF"] = "pinned_use_cuda_host_register:True,expandable_segments:True"
 
 _cudart = ctypes.CDLL('libcudart.so')
 
@@ -27,7 +30,8 @@ peak_host_mem_gb = 0.0
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="DeepSpeed Training")
 parser.add_argument('--zero_stage', type=int, default=None)
-parser.add_argument('--save_act_layer_frac', type=float, default=0, help="Fraction of layer activatons to leave on device, deafult is 0 (full layer-wise checkpointing)")
+parser.add_argument('--save_act_layer_frac', type=float, default=0, help="Fraction of layer activatons to avoid recomputation and leave on device, deafult is 0 (full layer-wise checkpointing)")
+parser.add_argument('--offload_act', type=bool, default=False, help="To offload act checkpoints to cpu (blocking, hurts perf)")
 parser.add_argument('--model_config', type=str, required=True)
 parser.add_argument('--seq_len', type=int, default=512, help='Sequence length for training')
 parser.add_argument('--seqs_per_batch', type=int, default=1)
@@ -44,7 +48,7 @@ seqs_per_batch = args.seqs_per_batch
 num_steps = args.num_steps
 zero_stage = args.zero_stage
 save_act_layer_frac = args.save_act_layer_frac
-
+offload_act = args.offload_act
 
 global_steps = grad_accum_steps * num_steps
 
@@ -93,7 +97,9 @@ ds_config = {
     "bf16": { "enabled": True, "bf16_master_weights_and_grads": True, "bf16_optimizer_states": True},
     #"wall_clock_breakdown": True,
     #"steps_per_print": 1,
-    "activation_checkpointing": { "cpu_checkpointing": True, "partition_activations": True },
+
+    ## configuring this below...
+    #"activation_checkpointing": { "cpu_checkpointing": True, "partition_activations": True },
 }
 
 if zero_stage and zero_stage != 0:
@@ -141,11 +147,20 @@ model_engine, optimizer, training_dataloader, _ = deepspeed.initialize(
     training_data=dummy_dataset # Pass the Dataset here
 )
 
+act_layers_saved = select_bins(model_args.n_layers, save_act_layer_frac)
+
+recompute_layers = []
+for i in range(model_args.n_layers):
+    if i not in act_layers_saved:
+        recompute_layers.append(i)
+
+num_checkpoints = len(recompute_layers)
 deepspeed.checkpointing.configure(
-    mpu_=None,
-    partition_activations=True,
-    checkpoint_in_cpu=True,
-    num_checkpoints=model_args.n_layers,
+        mpu_=None,
+        partition_activations=True,
+        checkpoint_in_cpu=offload_act,
+        contiguous_checkpointing=True,
+        num_checkpoints=num_checkpoints
 )
 
 from deepspeed.runtime.activation_checkpointing import checkpointing as ds_ckpt

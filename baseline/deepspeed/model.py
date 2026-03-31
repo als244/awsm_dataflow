@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 import torch.cuda.nvtx as nvtx # Import NVTX
 
-#from torch.utils.checkpoint import checkpoint
+from torch.utils.checkpoint import checkpoint
 import deepspeed
 
 from liger_kernel.transformers.rms_norm import LigerRMSNorm
@@ -236,7 +236,7 @@ class Model(nn.Module):
 
         nvtx.range_push("Output Projection and Cross Entropy Loss")
         #loss = self.loss_fn(self.output.weight, h.view(-1, self.model_dim), labels.view(-1))
-        loss = chunked_linear_cross_entropy(h, self.output.weight, labels.view(-1)) 
+        loss = chunked_linear_cross_entropy(h.view(-1, self.model_dim), self.output.weight, labels.view(-1)) 
         nvtx.range_pop()
         
         return loss
