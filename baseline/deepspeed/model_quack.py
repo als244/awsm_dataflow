@@ -8,7 +8,7 @@ import torch.cuda.nvtx as nvtx # Import NVTX
 
 from torch.utils.checkpoint import checkpoint
 
-from quack import QuackRMSNorm
+from quack.rmsnorm import QuackRMSNorm
 
 from liger_kernel.transformers.llama4_rope import liger_llama4_text_rotary_pos_emb as LigerRope
 

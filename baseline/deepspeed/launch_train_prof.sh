@@ -77,7 +77,7 @@ NUM_STEPS=${POSITIONAL_ARGS[4]}
 MASTER_PORT=$((29500 + RANDOM % 36035))
 
 
-NSYS_CMD="nsys profile -t cuda,nvtx,cublas,osrt --capture-range cudaProfilerApi --capture-range-end stop --cuda-event-trace=false --gpu-metrics-devices=all --force-overwrite true -o profiling/deepspeed_example_chunked_ce_seq4k_chunk16k_batch64k_muon"
+NSYS_CMD="nsys profile -t cuda,nvtx,cublas,osrt --capture-range cudaProfilerApi --capture-range-end stop --cuda-event-trace=false --gpu-metrics-devices=all --force-overwrite true -o profiling/deepspeed_example_chunked_ce_seq4k_chunk16k_batch64k_adamw"
 
 # Build the deepspeed command
 DEEPSPEED_CMD="deepspeed --num_gpus=1 --master_port=$MASTER_PORT train.py \
