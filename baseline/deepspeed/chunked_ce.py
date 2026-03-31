@@ -146,7 +146,7 @@ def awsm_cross_entropy_loss(P_in: torch.Tensor, labels: torch.Tensor, L: torch.T
 # =========================================================================
 class ChunkedLinearCrossEntropyFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, weight, labels, chunk_size=4096, ignore_index=-100):
+    def forward(ctx, x, weight, labels, chunk_size=1024, ignore_index=-100):
         ctx.save_for_backward(x, weight, labels)
         ctx.chunk_size = chunk_size
         ctx.ignore_index = ignore_index
@@ -222,7 +222,7 @@ class ChunkedLinearCrossEntropyFunction(torch.autograd.Function):
 # =========================================================================
 # API Wrapper
 # =========================================================================
-def chunked_linear_cross_entropy(x, weight, labels, chunk_size=4096, ignore_index=-100):
+def chunked_linear_cross_entropy(x, weight, labels, chunk_size=1024, ignore_index=-100):
     return ChunkedLinearCrossEntropyFunction.apply(x, weight, labels, chunk_size, ignore_index)
 
 # --- Quick Verification Test ---
@@ -254,7 +254,7 @@ if __name__ == "__main__":
     weight.grad.zero_()
     
     # Custom Triton-Chunked method
-    loss_chunked = chunked_linear_cross_entropy(x, weight, labels, chunk_size=2048, ignore_index=-100)
+    loss_chunked = chunked_linear_cross_entropy(x, weight, labels, chunk_size=1024, ignore_index=-100)
     loss_chunked.backward()
     
     dx_chunked = x.grad.clone()
