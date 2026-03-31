@@ -57,7 +57,7 @@ torch.cuda.set_device(DEVICE_ID)
 # Fixed constants
 # ---------------------------------------------------------------------------
 
-TO_PROFILE_BACKEND      = False
+TO_PROFILE_BACKEND      = True
 TO_PROFILE_TORCH_MEMORY = False
 TO_SAVE_ERROR           = False
 
@@ -199,8 +199,11 @@ head_layer  = TransformerHead(model_dims, model_hyperparams)
 
 if model_dims["num_routed_experts"] > 0:
     secondary_compute_stream = torch.cuda.Stream(device=device)
-    _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
-    _nvtxlib.nvtxNameCuStreamA(secondary_compute_stream.cuda_stream, b"Secondary Compute")
+    try:
+        _nvtxlib = ctypes.CDLL('libnvToolsExt.so')
+        _nvtxlib.nvtxNameCuStreamA(secondary_compute_stream.cuda_stream, b"Secondary Compute")
+    except Exception as e:
+        pass
     model_layers = [
         TransformerMoELayer(layer_id, model_dims, model_hyperparams, is_muon=USE_MUON, secondary_compute_stream=secondary_compute_stream)
         for layer_id in range(model_dims["n_layers"])
