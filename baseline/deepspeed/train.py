@@ -32,6 +32,7 @@ parser = argparse.ArgumentParser(description="DeepSpeed Training")
 parser.add_argument('--zero_stage', type=int, default=None)
 parser.add_argument('--save_act_layer_frac', type=float, default=0, help="Fraction of layer activatons to avoid recomputation and leave on device, deafult is 0 (full layer-wise checkpointing)")
 parser.add_argument('--offload_act', type=bool, default=False, help="To offload act checkpoints to cpu (blocking, hurts perf)")
+parser.add_argument('--use_muon', type=bool, default=True, help="Set true to use muon optimizer, otherwise AdamW")
 parser.add_argument('--model_config', type=str, required=True)
 parser.add_argument('--seq_len', type=int, default=512, help='Sequence length for training')
 parser.add_argument('--seqs_per_batch', type=int, default=1)
@@ -49,6 +50,7 @@ num_steps = args.num_steps
 zero_stage = args.zero_stage
 save_act_layer_frac = args.save_act_layer_frac
 offload_act = args.offload_act
+use_muon = args.use_muon
 
 global_steps = grad_accum_steps * num_steps
 
@@ -87,13 +89,21 @@ torch.manual_seed(SEED)
 epochs = 1
 learning_rate = 2e-5
 
+AdamOptSettings = { "type": "AdamW", "params": { "lr": learning_rate, "betas": [0.9, 0.999], "weight_decay": 1e-4, "eps": 1e-8}}
+MuonOptSettings = { "type": "Muon", "params": { "lr": learning_rate, "momentum": 0.9, "weight_decay": 0.0, "muon_lr": 0.001}}
+
+if use_muon:
+    opt_settings = MuonOptSettings
+else:
+    opt_settings = AdamOptSettings
+
 # --- DeepSpeed Configuration with Logging ---
 # The ds_config can be loaded from a JSON file specified by --deepspeed_config
 # For simplicity, we define it here.
 ds_config = {
     "train_micro_batch_size_per_gpu": seqs_per_batch,
     "gradient_accumulation_steps": grad_accum_steps,
-    "optimizer": { "type": "AdamW", "params": { "lr": learning_rate, "betas": [0.9, 0.999], "weight_decay": 1e-4, "eps": 1e-8}},
+    "optimizer": opt_settings,
     "bf16": { "enabled": True, "bf16_master_weights_and_grads": True, "bf16_optimizer_states": True},
     #"wall_clock_breakdown": True,
     #"steps_per_print": 1,
