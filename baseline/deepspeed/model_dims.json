@@ -1,0 +1,222 @@
+{
+    "nanogpt_124M": {
+        "vocab_size": 50304,
+        "n_layers": 12,
+        "d_model": 768,
+        "head_dim": 128,
+        "n_heads": 6,
+        "n_kv_heads": 6,
+        "expert_dim": 3072,
+        "num_shared_experts": 1,
+        "num_routed_experts": 0,
+        "top_k": 0,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "llama3_8B": {
+        "vocab_size": 128256,
+        "n_layers": 32,
+        "d_model": 4096,
+        "head_dim": 128,
+        "n_heads": 32,
+        "n_kv_heads": 8,
+        "expert_dim": 14336,
+        "num_shared_experts": 1,
+        "num_routed_experts": 0,
+        "top_k": 0,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "olmoe_7Bx1B": {
+        "vocab_size": 50304,
+        "n_layers": 16,
+        "d_model": 2048,
+        "head_dim": 128,
+        "n_heads": 16,
+        "n_kv_heads": 16,
+        "expert_dim": 1024,
+        "num_shared_experts": 0,
+        "num_routed_experts": 64,
+        "top_k": 8,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "dense_15B": {
+        "vocab_size": 128256,
+        "n_layers": 64,
+        "d_model": 4096,
+        "head_dim": 128,
+        "n_heads": 32,
+        "n_kv_heads": 8,
+        "expert_dim": 14336,
+        "num_shared_experts": 1,
+        "num_routed_experts": 0,
+        "top_k": 0,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "sparse_16Bx3B": {
+        "vocab_size": 50304,
+        "n_layers": 32,
+        "d_model": 3072,
+        "head_dim": 128,
+        "n_heads": 24,
+        "n_kv_heads": 4,
+        "expert_dim": 768,
+        "num_shared_experts": 0,
+        "num_routed_experts": 64,
+        "top_k": 8,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "qwen3_32B": {
+        "vocab_size": 152064,
+        "n_layers": 64,
+        "d_model": 5120,
+        "head_dim": 128,
+        "n_heads": 40,
+        "n_kv_heads": 8,
+        "expert_dim": 27648,
+        "num_shared_experts": 1,
+        "num_routed_experts": 0,
+        "top_k": 0,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "qwen3_30Bx3B": {
+        "vocab_size": 151936,
+        "n_layers": 48,
+        "d_model": 2048,
+        "head_dim": 128,
+        "n_heads": 32,
+        "n_kv_heads": 4,
+        "expert_dim": 768,
+        "num_shared_experts": 0,
+        "num_routed_experts": 128,
+        "top_k": 8,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "mini_deepseek": {
+        "vocab_size": 50304,
+        "n_layers": 12,
+        "d_model": 7168,
+        "head_dim": 128,
+        "n_heads": 56,
+        "n_kv_heads": 8,
+        "expert_dim": 2048,
+        "num_shared_experts": 0,
+        "num_routed_experts": 16,
+        "top_k": 2,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "small_deepseek": {
+        "vocab_size": 50304,
+        "n_layers": 4,
+        "d_model": 7168,
+        "head_dim": 128,
+        "n_heads": 56,
+        "n_kv_heads": 8,
+        "expert_dim": 2048,
+        "num_shared_experts": 0,
+        "num_routed_experts": 128,
+        "top_k": 4,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    },
+    "qwen3_moe_shallow": {
+        "vocab_size": 151936,
+        "n_layers": 8,
+        "d_model": 4096,
+        "head_dim": 128,
+        "n_heads": 64,
+        "n_kv_heads": 4,
+        "expert_dim": 1536,
+        "num_shared_experts": 0,
+        "num_routed_experts": 128,
+        "top_k": 8,
+        "is_causal": true,
+        "datatypes": {
+            "embed": "bfloat16",
+            "head_proj": "bfloat16",
+            "attn_proj": "bfloat16",
+            "expert_proj": "bfloat16",
+            "router": "bfloat16",
+            "norm": "bfloat16",
+            "residual": "bfloat16"
+        }
+    }
+}

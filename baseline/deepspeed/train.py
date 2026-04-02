@@ -31,10 +31,10 @@ peak_host_mem_gb = 0.0
 parser = argparse.ArgumentParser(description="DeepSpeed Training")
 parser.add_argument('--zero_stage', type=int, default=None)
 parser.add_argument('--save_act_layer_frac', type=float, default=0, help="Fraction of layer activatons to avoid recomputation and leave on device, deafult is 0 (full layer-wise checkpointing)")
-parser.add_argument('--offload_act', type=bool, default=False, help="To offload act checkpoints to cpu (blocking, hurts perf)")
+parser.add_argument('--offload_act', action='store_true', help="Offload act checkpoints to cpu (blocking, hurts perf)")
 ### This has terrible performance, every bwd layer triggers blocking, paged data transfer of muon state to device and then to host causing severe idleness...
-parser.add_argument('--use_muon', type=bool, default=False, help="Set true to use muon optimizer, otherwise AdamW")
-parser.add_argument('--model_config', type=str, required=True)
+parser.add_argument('--use_muon', action='store_true', help="Use muon optimizer, otherwise AdamW")
+parser.add_argument('--model_name', type=str, required=True, help="Key in model_dims.json (e.g. llama3_8B)")
 parser.add_argument('--seq_len', type=int, default=512, help='Sequence length for training')
 parser.add_argument('--seqs_per_batch', type=int, default=1)
 parser.add_argument('--grad_accum_steps', type=int, default=1)
@@ -55,31 +55,46 @@ use_muon = args.use_muon
 
 global_steps = grad_accum_steps * num_steps
 
-def load_model_args_from_json(json_path: str) -> ModelArgs:
-    """Load ModelArgs from a JSON file."""
-    
+MODEL_DIMS_FILE = "model_dims.json"
+
+def load_model_args(model_name: str) -> ModelArgs:
+    """Load ModelArgs for the given model name from model_dims.json."""
+
     DTYPE_MAP = {
+        "bfloat16": torch.bfloat16,
         "bf16": torch.bfloat16,
+        "float16": torch.float16,
         "fp16": torch.float16,
+        "float32": torch.float32,
         "fp32": torch.float32,
-        "none": None
+        "none": None,
     }
 
-    with open(json_path, 'r') as f:
-        config = json.load(f)
+    with open(MODEL_DIMS_FILE, 'r') as f:
+        all_configs = json.load(f)
 
-    # Convert dtype strings to torch.dtype
-    for key in ['embed_dtype', 'attn_dtype', 'router_dtype', 'expert_dtype', 'head_dtype']:
-        if key in config and config[key] in DTYPE_MAP:
-            dtype_value = DTYPE_MAP[config[key]]
-            if dtype_value != "none":
-                config[key] = dtype_value
+    if model_name not in all_configs:
+        available = ", ".join(all_configs.keys())
+        raise ValueError(f"Unknown model '{model_name}'. Available: {available}")
 
-    # router_dtype stays as string "none"
+    config = all_configs[model_name]
+
+    # Flatten the nested "datatypes" dict into top-level keys if present
+    if "datatypes" in config:
+        dt = config.pop("datatypes")
+        for key, val in dt.items():
+            # Map to torch dtypes; keep as-is if not recognised (ModelArgs
+            # can decide what to do with it)
+            config[key] = DTYPE_MAP.get(val, val)
+
+    # Also handle any remaining loose dtype strings (legacy flat format)
+    for key in list(config.keys()):
+        if isinstance(config[key], str) and config[key] in DTYPE_MAP:
+            config[key] = DTYPE_MAP[config[key]]
 
     return ModelArgs(**config)
 
-model_args = load_model_args_from_json(args.model_config)
+model_args = load_model_args(args.model_name)
 
 SEED = 42
 
@@ -262,4 +277,3 @@ ret = _cudart.cudaProfilerStop()
 peak_mem_reserved_gb = torch.cuda.max_memory_reserved() / 1024**3
 
 print(f"\n\n\nTraining complete! ✅\n\tThroughput: {step_throughputs[-1]} Tok/sec\n\tPeak Host Memory Reserved: {peak_host_mem_gb:.2f} GB\n\tPeak Device Memory Reserved: {peak_mem_reserved_gb:.2f} GB\n\n\n")
-
