@@ -146,7 +146,7 @@ if zero_stage and zero_stage != 0:
 
 def get_dummy_dataset(seq_length=512, total_tokens=2**24):
     """Returns a TensorDataset."""
-    print("Creating dummy dataset...")
+    print("Creating dummy dataset...", flush=True)
     num_samples = total_tokens // seq_length
     source_data = torch.randint(0, model_args.vocab_size, (num_samples, seq_length))
     target_data = torch.roll(source_data, shifts=-1, dims=1)
@@ -156,7 +156,7 @@ def get_dummy_dataset(seq_length=512, total_tokens=2**24):
     return dataset
 
 # --- Initialization ---
-print("Initializing model and DeepSpeed...")
+print("Initializing model and DeepSpeed...", flush=True)
 model = Model(model_args)
 
 for name, param in model.named_parameters():
@@ -171,9 +171,9 @@ for name, param in model.named_parameters():
 # === CHANGE: Call the new function to get the dataset ===
 dummy_dataset = get_dummy_dataset(seq_length=args.seq_len)
 
-print("Initializing DeepSpeed...")
+print("Initializing DeepSpeed...", flush=True)
 
-print(f"Using deepspeed config:\n {ds_config}")
+print(f"Using deepspeed config:\n {ds_config}", flush=True)
 
 # === CHANGE: Pass the dataset to training_data ===
 model_engine, optimizer, training_dataloader, _ = deepspeed.initialize(
@@ -192,6 +192,8 @@ for i in range(model_args.n_layers):
         recompute_layers.append(i)
 
 num_checkpoints = len(recompute_layers)
+
+print(f"Number of checkpointed layers: {num_checkpoints}", flush=True)
 deepspeed.checkpointing.configure(
         mpu_=None,
         partition_activations=True,
@@ -199,11 +201,6 @@ deepspeed.checkpointing.configure(
         contiguous_checkpointing=True,
         num_checkpoints=num_checkpoints
 )
-
-from deepspeed.runtime.activation_checkpointing import checkpointing as ds_ckpt
-print(f"PARTITION_ACTIVATIONS = {ds_ckpt.PARTITION_ACTIVATIONS}")
-print(f"CPU_CHECKPOINT = {ds_ckpt.CPU_CHECKPOINT}")
-print(f"num_layers = {ds_ckpt.num_layers}")
 
 current_host_mem_gb = process.memory_info().rss / (1024 ** 3)
 # Update peak if current is higher
@@ -214,7 +211,7 @@ peak_host_mem_gb = max(peak_host_mem_gb, current_host_mem_gb)
 torch.cuda.empty_cache()
 
 # --- Training Loop with Throughput Calculation ---
-print(f"Starting training with sequence length: {args.seq_len}...")
+print(f"Starting training with sequence length: {args.seq_len}...", flush=True)
 
 ret = _cudart.cudaProfilerStart()
 
@@ -265,7 +262,8 @@ for epoch in range(epochs):
                 max_alloc = torch.cuda.max_memory_allocated()
                 print(
                     f"\n\nEpoch: {epoch+1}, Step: {i+1}, BS: {actual_bs}, Loss: {loss.item():.4f} | "
-                    f"Step total_tokens: {total_tokens}, Step total_time = {elapsed_time}, Tok/sec: {tokens_per_sec:.2f} | Memory Max Alloc/Reserve: {max_alloc / (1 << 30)}/{max_reserve / (1 << 30)} GiB\n\n"
+                    f"Step total_tokens: {total_tokens}, Step total_time = {elapsed_time}, Tok/sec: {tokens_per_sec:.2f} | Memory Max Alloc/Reserve: {max_alloc / (1 << 30)}/{max_reserve / (1 << 30)} GiB\n\n",
+                    flush=True
                 )
                 start_time = time.time()
                 total_tokens = 0
