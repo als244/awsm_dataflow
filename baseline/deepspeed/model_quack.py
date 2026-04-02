@@ -16,7 +16,8 @@ from liger_kernel.transformers.swiglu import LigerSwiGLUMLP
 
 from quack.linear_cross_entropy import chunked_linear_cross_entropy
 
-from scattermoe.mlp import MLP, GLUMLP
+from sonicmoe import MoE, KernelBackendMoE
+from sonicmoe.enums import ActivationType
 
 from attention import do_attention
 
@@ -46,6 +47,9 @@ class ModelArgs:
     rope_theta: float = 500000
     rms_norm_epsilon: float = 1e-5
     rand_seed: int = 42
+    moe_kernel_backend: str = "sonicmoe"  # "sonicmoe", "scattermoe", or "torch"
+    moe_weight_init_std: float = 0.02
+    moe_add_bias: bool = False
 
 @dataclass
 class SwiGLUConfig:
@@ -118,40 +122,56 @@ class DenseFeedForward(nn.Module):
         return result
 
 
+# Map string activation types to SonicMoE ActivationType enum
+_ACTIVATION_TYPE_MAP = {
+    "swiglu": ActivationType.SWIGLU,
+    "geglu": ActivationType.GEGLU,
+    "reglu": ActivationType.REGLU,
+    "gelu": ActivationType.GELU,
+    "relu": ActivationType.RELU,
+    "silu": ActivationType.SILU,
+}
+
+# Map string kernel backend to SonicMoE KernelBackendMoE enum
+_KERNEL_BACKEND_MAP = {
+    "sonicmoe": KernelBackendMoE.sonicmoe,
+    "scattermoe": KernelBackendMoE.scattermoe,
+    "torch": KernelBackendMoE.torch,
+}
+
+
 class SparseFeedForward(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
 
-        self.top_k = args.top_k_routed_experts
-        self.router_dtype = args.router_dtype
-        self.model_dim = args.model_dim
-        self.expert_dim = args.expert_dim
-        self.num_routed_experts = args.num_routed_experts
-        self.router = nn.Linear(self.model_dim, self.num_routed_experts, bias=False, dtype=self.router_dtype)
-        self.moe_layer = GLUMLP(input_size=self.model_dim, hidden_size=self.expert_dim, activation=nn.SiLU(), num_experts=self.num_routed_experts, top_k=self.top_k)
+        self.kernel_backend = _KERNEL_BACKEND_MAP.get(
+            args.moe_kernel_backend, KernelBackendMoE.sonicmoe
+        )
 
+        activation_type = _ACTIVATION_TYPE_MAP.get(
+            args.expert_mlp_type, ActivationType.SWIGLU
+        )
+
+        self.moe_layer = MoE(
+            num_experts=args.num_routed_experts,
+            num_experts_per_tok=args.top_k_routed_experts,
+            hidden_size=args.model_dim,
+            intermediate_size=args.expert_dim,
+            activation_function=activation_type,
+            add_bias=args.moe_add_bias,
+            std=args.moe_weight_init_std,
+        )
 
     def forward(self, x: torch.Tensor):
         nvtx.range_push("MoE") # NVTX Start
 
-        batch_size, sequence_length, hidden_dim = x.shape
-
-        x = x.view(-1, hidden_dim)
-        routed_x = self.router(x)
-
-        routing_weights = F.softmax(routed_x, dim=1, dtype=torch.float32)
-        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-
-        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-
-        routing_weights = routing_weights.to(x.dtype)
-
-        final_hidden_states = self.moe_layer(x, routing_weights, selected_experts)
-
-        final_hidden_states = final_hidden_states.view(batch_size, sequence_length, hidden_dim)
+        output, aux_loss = self.moe_layer(
+            x, kernel_backend_moe=self.kernel_backend
+        )
 
         nvtx.range_pop() # NVTX End
-        return final_hidden_states
+        return output, aux_loss
+
 
 class DecoderBlock(nn.Module):
     def __init__(self, args: ModelArgs, layer_id):
@@ -159,8 +179,9 @@ class DecoderBlock(nn.Module):
         self.model_dim = args.model_dim
         self.layer_id = layer_id
         self.attention = Attention(args)
+        self.is_sparse = args.num_routed_experts > 0
 
-        if args.num_routed_experts == 0:
+        if not self.is_sparse:
             self.feed_forward = DenseFeedForward(args)
         else:
             self.feed_forward = SparseFeedForward(args)
@@ -174,10 +195,16 @@ class DecoderBlock(nn.Module):
         nvtx.range_pop()
         
         nvtx.range_push("FeedForward Sub-Block")
-        out = h + self.feed_forward(self.ffn_norm(h))
+        ffn_input = self.ffn_norm(h)
+        if self.is_sparse:
+            ffn_output, aux_loss = self.feed_forward(ffn_input)
+        else:
+            ffn_output = self.feed_forward(ffn_input)
+            aux_loss = None
+        out = h + ffn_output
         nvtx.range_pop()
         
-        return out
+        return out, aux_loss
 
 class Model(nn.Module):
     def __init__(self, args: ModelArgs):
@@ -213,13 +240,19 @@ class Model(nn.Module):
 
         freqs = self.freqs_complex[:seq_len].to(h.device)
 
+        total_aux_loss = torch.tensor(0.0, device=h.device, dtype=torch.float32)
+        aux_loss_count = 0
+
         nvtx.range_push("Decoder Layers")
         for i, layer in enumerate(self.layers):
             nvtx.range_push(f"Layer {i}")
             if i in act_layers_saved:
-                h = layer(h, freqs)
+                h, aux_loss = layer(h, freqs)
             else:
-                h = checkpoint(layer, h, freqs, use_reentrant=False) # Call the layer directly
+                h, aux_loss = checkpoint(layer, h, freqs, use_reentrant=False)
+            if aux_loss is not None:
+                total_aux_loss = total_aux_loss + aux_loss
+                aux_loss_count += 1
             nvtx.range_pop()
         nvtx.range_pop()
             
@@ -231,6 +264,8 @@ class Model(nn.Module):
         nvtx.range_push("Output Projection and Cross Entropy Loss")
         loss = chunked_linear_cross_entropy(h, self.output.weight, labels.view(-1))
         nvtx.range_pop()
+
+        if aux_loss_count > 0:
+            loss = loss + total_aux_loss / aux_loss_count
         
         return loss
-
