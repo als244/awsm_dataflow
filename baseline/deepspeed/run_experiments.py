@@ -52,9 +52,9 @@ SEQ_CONFIGS: list[tuple[int, int]] = [
 
 MAX_TOKENS_PER_BATCH: dict[str, int] = {
     "llama3_8B":       65536,
-    "olmoe_7Bx1B":     262144,
+    "olmoe_7Bx1B":     131072,
     "dense_15B":       65536,
-    "sparse_16Bx3B":   262144,
+    "sparse_16Bx3B":   131072,
 }
 
 SWEEP_PARAMS = {
