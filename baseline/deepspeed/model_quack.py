@@ -23,33 +23,70 @@ from attention import do_attention
 
 from select_bins import select_bins
 
+_DTYPE_MAP = {
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+    "float32": torch.float32,
+}
+
 @dataclass
 class ModelArgs:
     """Configuration for the model."""
-    embed_dtype: torch.dtype = torch.bfloat16
-    attn_dtype: torch.dtype = torch.bfloat16
-    router_dtype: str = "none"
-    expert_dtype: torch.dtype = torch.bfloat16
-    head_dtype: torch.dtype = torch.bfloat16
+    # Architecture (matches config keys directly)
     vocab_size: int = 128256
-    model_dim: int = 4096
-    head_dim: int = 128
     n_layers: int = 32
+    d_model: int = 4096
+    head_dim: int = 128
     n_heads: int = 32
     n_kv_heads: int = 8
-    qk_norm_type: str = "none"
-    qk_norm_weight_type: str = "none"
+    expert_dim: int = 14336
     num_shared_experts: int = 1
     num_routed_experts: int = 0
-    top_k_routed_experts: int = 0
-    expert_dim: int = 14336
+    top_k: int = 0
+    is_causal: bool = True
+
+    # Datatypes (populated from config "datatypes" dict)
+    embed_dtype: torch.dtype = torch.bfloat16
+    head_proj_dtype: torch.dtype = torch.bfloat16
+    attn_proj_dtype: torch.dtype = torch.bfloat16
+    expert_proj_dtype: torch.dtype = torch.bfloat16
+    router_dtype: torch.dtype = torch.bfloat16
+    norm_dtype: torch.dtype = torch.bfloat16
+    residual_dtype: torch.dtype = torch.bfloat16
+
+    # Defaults not in config
     expert_mlp_type: str = "swiglu"
     rope_theta: float = 500000
     rms_norm_epsilon: float = 1e-5
     rand_seed: int = 42
-    moe_kernel_backend: str = "sonicmoe"  # "sonicmoe", "scattermoe", or "torch"
+    moe_kernel_backend: str = "sonicmoe"
     moe_weight_init_std: float = 0.02
     moe_add_bias: bool = False
+
+    @classmethod
+    def from_config(cls, cfg: dict) -> "ModelArgs":
+        """Create ModelArgs from a config dict (e.g. one entry from configs.json)."""
+        datatypes = cfg.get("datatypes", {})
+        return cls(
+            vocab_size=cfg.get("vocab_size", cls.vocab_size),
+            n_layers=cfg.get("n_layers", cls.n_layers),
+            d_model=cfg.get("d_model", cls.d_model),
+            head_dim=cfg.get("head_dim", cls.head_dim),
+            n_heads=cfg.get("n_heads", cls.n_heads),
+            n_kv_heads=cfg.get("n_kv_heads", cls.n_kv_heads),
+            expert_dim=cfg.get("expert_dim", cls.expert_dim),
+            num_shared_experts=cfg.get("num_shared_experts", cls.num_shared_experts),
+            num_routed_experts=cfg.get("num_routed_experts", cls.num_routed_experts),
+            top_k=cfg.get("top_k", cls.top_k),
+            is_causal=cfg.get("is_causal", cls.is_causal),
+            embed_dtype=_DTYPE_MAP.get(datatypes.get("embed", "bfloat16"), torch.bfloat16),
+            head_proj_dtype=_DTYPE_MAP.get(datatypes.get("head_proj", "bfloat16"), torch.bfloat16),
+            attn_proj_dtype=_DTYPE_MAP.get(datatypes.get("attn_proj", "bfloat16"), torch.bfloat16),
+            expert_proj_dtype=_DTYPE_MAP.get(datatypes.get("expert_proj", "bfloat16"), torch.bfloat16),
+            router_dtype=_DTYPE_MAP.get(datatypes.get("router", "bfloat16"), torch.bfloat16),
+            norm_dtype=_DTYPE_MAP.get(datatypes.get("norm", "bfloat16"), torch.bfloat16),
+            residual_dtype=_DTYPE_MAP.get(datatypes.get("residual", "bfloat16"), torch.bfloat16),
+        )
 
 @dataclass
 class SwiGLUConfig:
@@ -74,12 +111,12 @@ class Attention(nn.Module):
         self.n_heads = args.n_heads
         self.head_dim = args.head_dim
         self.n_kv_heads = args.n_kv_heads
-        self.model_dim = args.model_dim
-        self.dtype = args.attn_dtype
-        self.wq = nn.Linear(self.model_dim, self.n_heads * self.head_dim, bias=False, dtype=self.dtype)
-        self.wk = nn.Linear(self.model_dim, self.n_kv_heads * self.head_dim, bias=False, dtype=self.dtype)
-        self.wv = nn.Linear(self.model_dim, self.n_kv_heads * self.head_dim, bias=False, dtype=self.dtype)
-        self.wo = nn.Linear(self.n_heads * self.head_dim, self.model_dim, bias=False, dtype=self.dtype)
+        self.d_model = args.d_model
+        self.dtype = args.attn_proj_dtype
+        self.wq = nn.Linear(self.d_model, self.n_heads * self.head_dim, bias=False, dtype=self.dtype)
+        self.wk = nn.Linear(self.d_model, self.n_kv_heads * self.head_dim, bias=False, dtype=self.dtype)
+        self.wv = nn.Linear(self.d_model, self.n_kv_heads * self.head_dim, bias=False, dtype=self.dtype)
+        self.wo = nn.Linear(self.n_heads * self.head_dim, self.d_model, bias=False, dtype=self.dtype)
 
     def forward(self, x: torch.Tensor, freqs):
         nvtx.range_push("Attention") # NVTX Start
@@ -107,7 +144,7 @@ class DenseFeedForward(nn.Module):
         super().__init__()
         
         swiglu_config = SwiGLUConfig()
-        swiglu_config.hidden_size = args.model_dim
+        swiglu_config.hidden_size = args.d_model
         swiglu_config.intermediate_size = args.expert_dim
         
         self.swiglu = LigerSwiGLUMLP(swiglu_config)
@@ -154,8 +191,8 @@ class SparseFeedForward(nn.Module):
 
         self.moe_layer = MoE(
             num_experts=args.num_routed_experts,
-            num_experts_per_tok=args.top_k_routed_experts,
-            hidden_size=args.model_dim,
+            num_experts_per_tok=args.top_k,
+            hidden_size=args.d_model,
             intermediate_size=args.expert_dim,
             activation_function=activation_type,
             add_bias=args.moe_add_bias,
@@ -176,7 +213,7 @@ class SparseFeedForward(nn.Module):
 class DecoderBlock(nn.Module):
     def __init__(self, args: ModelArgs, layer_id):
         super().__init__()
-        self.model_dim = args.model_dim
+        self.d_model = args.d_model
         self.layer_id = layer_id
         self.attention = Attention(args)
         self.is_sparse = args.num_routed_experts > 0
@@ -186,8 +223,8 @@ class DecoderBlock(nn.Module):
         else:
             self.feed_forward = SparseFeedForward(args)
         
-        self.attention_norm = QuackRMSNorm(self.model_dim, eps=args.rms_norm_epsilon)
-        self.ffn_norm = QuackRMSNorm(self.model_dim, eps=args.rms_norm_epsilon)
+        self.attention_norm = QuackRMSNorm(self.d_model, eps=args.rms_norm_epsilon)
+        self.ffn_norm = QuackRMSNorm(self.d_model, eps=args.rms_norm_epsilon)
 
     def forward(self, x: torch.Tensor, freqs):
         nvtx.range_push("Attention Sub-Block")
@@ -213,18 +250,18 @@ class Model(nn.Module):
         self.vocab_size = args.vocab_size
         
         self.embed_dtype = args.embed_dtype
-        self.head_dtype = args.head_dtype
+        self.head_proj_dtype = args.head_proj_dtype
 
-        self.model_dim = args.model_dim
+        self.d_model = args.d_model
         self.head_dim = args.head_dim
         self.rope_theta = args.rope_theta
 
         self.n_layers = args.n_layers
 
-        self.tok_embeddings = nn.Embedding(self.vocab_size, self.model_dim, dtype=self.embed_dtype)
+        self.tok_embeddings = nn.Embedding(self.vocab_size, self.d_model, dtype=self.embed_dtype)
         self.layers = nn.ModuleList([DecoderBlock(args, i) for i in range(self.n_layers)])
-        self.norm = QuackRMSNorm(self.model_dim, eps=args.rms_norm_epsilon)
-        self.output = nn.Linear(self.model_dim, self.vocab_size, bias=False, dtype=self.head_dtype)
+        self.norm = QuackRMSNorm(self.d_model, eps=args.rms_norm_epsilon)
+        self.output = nn.Linear(self.d_model, self.vocab_size, bias=False, dtype=self.head_proj_dtype)
 
         self.max_seq_len = 2 ** 20
         self.freqs_complex = precompute_theta_pos_frequencies(self.head_dim, self.max_seq_len, self.rope_theta)
