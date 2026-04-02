@@ -15,6 +15,7 @@ Key behaviour:
     model_name) are crossed against every (seq_len, seqs_per_batch,
     grad_accum_steps) combination.
   - num_steps is fixed at 3 for every run.
+  - Each run is launched via the deepspeed launcher with a random master port.
 """
 
 import argparse
@@ -23,6 +24,7 @@ import subprocess
 import os
 import sys
 import math
+import random
 from datetime import datetime
 
 # ---------------------------------------------------------------------------
@@ -31,14 +33,14 @@ from datetime import datetime
 
 SEQ_CONFIGS: list[tuple[int, int]] = [
     # (seq_len, seqs_per_step)
-    (1024, 128),
-    (2048, 64),
-    (4096, 32),
-    (8192, 16),
-    (16384, 8),
-    (32768, 4),
-    (65536, 2),
-    (131072, 1),
+    (1024, 512),
+    (2048, 256),
+    (4096, 128),
+    (8192, 64),
+    (16384, 32),
+    (32768, 16),
+    (65536, 8),
+    (131072, 4),
 ]
 
 SWEEP_PARAMS = {
@@ -66,14 +68,23 @@ FIXED_PARAMS = {
 # ---------------------------------------------------------------------------
 
 TRAIN_SCRIPT = "train.py"
-PYTHON       = sys.executable
+NUM_GPUS     = 1
 LOG_BASE_DIR = "experiment_logs"
 DRY_RUN      = False
+
+# Port range for random master port selection (avoid well-known ports)
+MASTER_PORT_MIN = 29500
+MASTER_PORT_MAX = 39999
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _random_master_port() -> int:
+    """Return a random port in the configured range for DeepSpeed master."""
+    return random.randint(MASTER_PORT_MIN, MASTER_PORT_MAX)
+
 
 def _factor_pairs(n: int) -> list[tuple[int, int]]:
     """Return all (a, b) pairs with a * b == n, sorted by a ascending."""
@@ -133,14 +144,24 @@ def params_to_run_name(combo: dict) -> str:
     )
 
 
-    # These flags use action='store_true' in train.py, so they should be
+# These flags use action='store_true' in train.py, so they should be
 # included as bare flags (no value) when True, and omitted when False.
 STORE_TRUE_FLAGS = {"offload_act", "use_muon"}
 
 
 def build_cmd(combo: dict, fixed: dict, run_name: str) -> list[str]:
-    """Construct the subprocess command list for a single experiment."""
-    cmd = [PYTHON, TRAIN_SCRIPT]
+    """Construct the subprocess command list for a single experiment.
+
+    Uses the deepspeed launcher with a random master port per run.
+    """
+    master_port = _random_master_port()
+
+    cmd = [
+        "deepspeed",
+        f"--num_gpus={NUM_GPUS}",
+        f"--master_port={master_port}",
+        TRAIN_SCRIPT,
+    ]
 
     all_params = {**fixed, **combo}
 
@@ -207,6 +228,12 @@ def parse_args() -> argparse.Namespace:
         default=DRY_RUN,
         help="Print commands without executing them.",
     )
+    parser.add_argument(
+        "--num-gpus",
+        type=int,
+        default=NUM_GPUS,
+        help=f"Number of GPUs per run. Default: {NUM_GPUS}.",
+    )
     return parser.parse_args()
 
 
@@ -218,6 +245,10 @@ def main():
     sys.stdout.reconfigure(line_buffering=True)
 
     args   = parse_args()
+
+    global NUM_GPUS
+    NUM_GPUS = args.num_gpus
+
     combos = all_combos(SWEEP_PARAMS, SEQ_CONFIGS)
     total  = len(combos)
 
@@ -229,6 +260,7 @@ def main():
         sys.exit(1)
 
     print(f"Experiment sweep: {total} combination(s)")
+    print(f"DeepSpeed GPUs  : {NUM_GPUS}")
     if start_from > 1:
         print(f"Resuming from   : experiment #{start_from}  (skipping first {start_from - 1})")
     print(f"Logs directory  : {LOG_BASE_DIR}/")
