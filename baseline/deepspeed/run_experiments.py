@@ -11,6 +11,8 @@ Key behaviour:
     (seqs_per_batch, grad_accum_steps) such that
     seqs_per_batch * grad_accum_steps == seqs_per_step are enumerated
     and swept over.
+  - Combinations where seqs_per_batch * seq_len > MAX_TOKENS_PER_BATCH
+    for the given model are skipped.
   - Remaining dimensions (zero_stage, save_act_layer_frac, offload_act,
     model_name) are crossed against every (seq_len, seqs_per_batch,
     grad_accum_steps) combination.
@@ -34,18 +36,30 @@ from datetime import datetime
 SEQ_CONFIGS: list[tuple[int, int]] = [
     # (seq_len, seqs_per_step)
     (1024, 512),
-    (2048, 256),
-    (4096, 128),
+    #(2048, 256),
+    #(4096, 128),
     (8192, 64),
-    (16384, 32),
-    (32768, 16),
+    #(16384, 32),
+    #(32768, 16),
     (65536, 8),
-    (131072, 4),
+    #(131072, 4),
 ]
 
+# ---------------------------------------------------------------------------
+# Per-model upper bound on tokens per batch (seqs_per_batch * seq_len).
+# Combinations exceeding this limit are skipped.
+# ---------------------------------------------------------------------------
+
+MAX_TOKENS_PER_BATCH: dict[str, int] = {
+    "llama3_8B":       65536,
+    "olmoe_7Bx1B":     262144,
+    "dense_15B":       65536,
+    "sparse_16Bx3B":   262144,
+}
+
 SWEEP_PARAMS = {
-    "zero_stage":           [0, 1, 2, 3],
-    "save_act_layer_frac":  [0, 0.125, 0.25, 0.5, 0.625, 0.75, 0.875, 1],
+    "zero_stage":           [1, 2, 3],
+    "save_act_layer_frac":  [0, 0.25, 0.5, 0.75, 1],
     "offload_act":          [False, True],
     "model_name":           [
         "llama3_8B",
@@ -54,6 +68,8 @@ SWEEP_PARAMS = {
         "sparse_16Bx3B",
     ],
 }
+
+
 
 # ---------------------------------------------------------------------------
 # Fixed overrides (applied to every run, not swept).
@@ -181,12 +197,16 @@ def build_cmd(combo: dict, fixed: dict, run_name: str) -> list[str]:
 def all_combos(
     sweep: dict,
     seq_configs: list[tuple[int, int]],
+    max_tokens_per_batch: dict[str, int],
 ) -> list[dict]:
     """Return list of dicts, one per combination in the full sweep grid.
 
     For each (seq_len, seqs_per_step) pair, all factor pairs of seqs_per_step
     are enumerated as (seqs_per_batch, grad_accum_steps), then crossed against
     the remaining sweep dimensions.
+
+    Combinations where seqs_per_batch * seq_len exceeds the model-specific
+    MAX_TOKENS_PER_BATCH are excluded.
     """
     # Build the non-seq, non-batch portion of the grid
     keys   = list(sweep.keys())
@@ -194,16 +214,27 @@ def all_combos(
     other_combos = [dict(zip(keys, c)) for c in itertools.product(*values)]
 
     result = []
+    skipped = 0
     for seq_len, seqs_per_step in seq_configs:
         factor_pairs = _factor_pairs(seqs_per_step)
         for seqs_per_batch, grad_accum_steps in factor_pairs:
             for other in other_combos:
+                model_name = other["model_name"]
+                tokens_per_batch = seqs_per_batch * seq_len
+                bound = max_tokens_per_batch.get(model_name)
+                if bound is not None and tokens_per_batch > bound:
+                    skipped += 1
+                    continue
                 result.append({
                     "seq_len": seq_len,
                     "seqs_per_batch": seqs_per_batch,
                     "grad_accum_steps": grad_accum_steps,
                     **other,
                 })
+
+    if skipped:
+        print(f"Filtered out {skipped} combination(s) exceeding max_tokens_per_batch limits.")
+
     return result
 
 
@@ -234,6 +265,18 @@ def parse_args() -> argparse.Namespace:
         default=NUM_GPUS,
         help=f"Number of GPUs per run. Default: {NUM_GPUS}.",
     )
+    all_models = SWEEP_PARAMS["model_name"]
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=all_models,
+        choices=all_models,
+        metavar="MODEL",
+        help=(
+            "Model(s) to include in the sweep. "
+            f"Choices: {', '.join(all_models)}. Default: all."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -249,7 +292,10 @@ def main():
     global NUM_GPUS
     NUM_GPUS = args.num_gpus
 
-    combos = all_combos(SWEEP_PARAMS, SEQ_CONFIGS)
+    sweep = dict(SWEEP_PARAMS)
+    sweep["model_name"] = args.models
+
+    combos = all_combos(sweep, SEQ_CONFIGS, MAX_TOKENS_PER_BATCH)
     total  = len(combos)
 
     start_from = args.start_from
