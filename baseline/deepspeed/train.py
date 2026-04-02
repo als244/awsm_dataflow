@@ -120,7 +120,7 @@ ds_config = {
     "train_micro_batch_size_per_gpu": seqs_per_batch,
     "gradient_accumulation_steps": grad_accum_steps,
     "optimizer": opt_settings,
-    "bf16": { "enabled": True, "bf16_master_weights_and_grads": True, "bf16_optimizer_states": True},
+    "bf16": { "enabled": True, "bf16_optimizer_states": True},
     #"wall_clock_breakdown": True,
     #"steps_per_print": 1,
 
@@ -129,6 +129,8 @@ ds_config = {
 }
 
 if zero_stage and zero_stage != 0:
+    ### only supported in zero stage 1,2, or 3
+    ds_config["bf16"]["bf16_master_weights_and_grads"] = True
     ds_config['optimizer']['fp32_optimizer_states'] = False
     if zero_stage == 1:
         ds_config['zero_optimization'] = {"stage": 1, "offload_optimizer": {"device": "cpu", "pin_memory": True}, "reduce_scatter": False}
