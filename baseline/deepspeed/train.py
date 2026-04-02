@@ -85,7 +85,7 @@ def load_model_args(model_name: str) -> ModelArgs:
         for key, val in dt.items():
             # Map to torch dtypes; keep as-is if not recognised (ModelArgs
             # can decide what to do with it)
-            config[key] = DTYPE_MAP.get(val, val)
+            config[key + "_dtype"] = DTYPE_MAP.get(val, val)
 
     # Also handle any remaining loose dtype strings (legacy flat format)
     for key in list(config.keys()):
