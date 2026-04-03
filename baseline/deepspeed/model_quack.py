@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import torch.cuda.nvtx as nvtx # Import NVTX
 
 from torch.utils.checkpoint import checkpoint
+import deepspeed
 
 from quack.rmsnorm import QuackRMSNorm
 
@@ -286,7 +287,8 @@ class Model(nn.Module):
             if i in act_layers_saved:
                 h, aux_loss = layer(h, freqs)
             else:
-                h, aux_loss = checkpoint(layer, h, freqs, use_reentrant=False)
+                #h, aux_loss = checkpoint(layer, h, freqs, use_reentrant=False)
+                h, aux_loss = deepspeed.checkpointing.checkpoint(layer, h, freqs)
             if aux_loss is not None:
                 total_aux_loss = total_aux_loss + aux_loss
                 aux_loss_count += 1
