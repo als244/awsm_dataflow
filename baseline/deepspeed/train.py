@@ -1,4 +1,8 @@
-# train.py (Corrected)
+# train.py
+
+os.environ["DS_SKIP_CUDA_CHECK"] = "1"
+os.environ["PYTORCH_ALLOC_CONF"] = "pinned_use_cuda_host_register:True,expandable_segments:True"
+
 
 import torch
 import torch.nn as nn
@@ -14,12 +18,9 @@ import ctypes
 
 import json
 
-from model import Model, ModelArgs
+from model_quack import Model, ModelArgs
 
 from select_bins import select_bins
-
-os.environ["DS_SKIP_CUDA_CHECK"] = "1"
-os.environ["PYTORCH_ALLOC_CONF"] = "pinned_use_cuda_host_register:True,expandable_segments:True"
 
 _cudart = ctypes.CDLL('libcudart.so')
 
@@ -103,7 +104,7 @@ torch.manual_seed(SEED)
 # --- Model & Training Configuration ---
 
 epochs = 1
-learning_rate = 2e-5
+learning_rate = 1e-8
 
 AdamOptSettings = { "type": "AdamW", "params": { "lr": learning_rate, "betas": [0.9, 0.999], "weight_decay": 1e-4, "eps": 1e-8}}
 MuonOptSettings = { "type": "Muon", "params": { "lr": learning_rate, "momentum": 0.9, "weight_decay": 0.0, "muon_lr": 0.001}}
