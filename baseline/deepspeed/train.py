@@ -1,5 +1,7 @@
 # train.py
 
+import os
+
 os.environ["DS_SKIP_CUDA_CHECK"] = "1"
 os.environ["PYTORCH_ALLOC_CONF"] = "pinned_use_cuda_host_register:True,expandable_segments:True"
 
@@ -12,7 +14,6 @@ import argparse
 import time
 
 import psutil
-import os
 
 import ctypes
 
