@@ -33,26 +33,33 @@ from datetime import datetime
 # maintain a target token budget per step.
 SEQ_CONFIGS: list[tuple[int, int]] = [
     # (seq_len, seqs_per_step)
-    (1024, 128),
-    (2048, 64),
-    (4096, 32),
-    (8192, 16),
-    (16384, 8),
-    (32768, 4),
-    (65536, 2),
-    (131072, 1),
-    # (262144, 2),
+    #(1024, 128),
+    #(2048, 256),
+    #(4096, 128),
+    #(8192, 16),
+    #(16384, 32),
+    (32768, 16),
+    (65536, 4),
+    (131072, 2),
+    (262144, 1),
+    (524288, 1),
 ]
+
+GPU_MEM_CHOICES = [12 + 4 * i for i in range(18)]
 
 SWEEP_PARAMS = {
     # SEQ_CONFIGS is handled separately below — do not add seq_len or
     # seqs_per_step here, they will be injected automatically.
-    "max_gpu_mem_gib": [12, 14, 16, 18, 20, 22, 24, 26, 28, 30],
-    # "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B", "qwen3_32B", "qwen3_30Bx3B"],
-    "model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B"],
+    "max_gpu_mem_gib": [30, 70],
+    #"model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B", "qwen3_32B", "qwen3_30Bx3B"],
+    "model_choice": ["llama3_8B", "qwen3_30Bx3B"],
+    #"model_choice":   ["llama3_8B", "olmoe_7Bx1B", "dense_15B", "sparse_16Bx3B"],
+    #"model_choice": ["llama3_8B", "olmoe_7Bx1B", "dense_15B"],
     #"model_choice":   ["llama3_8B", "dense_15B"],
+    #"model_choice": ["sparse_16Bx3B"],
     #"force_saved_act_level": [None, 0, 3],
-    "force_saved_act_level": [None, 0, 3],
+    "max_host_mem_gib": [120, 160, 200, 240, 280, 320, 360],
+    "force_saved_act_level": [None],
 }
 
 # ---------------------------------------------------------------------------
@@ -61,9 +68,10 @@ SWEEP_PARAMS = {
 # ---------------------------------------------------------------------------
 
 FIXED_PARAMS = {
-    "max_steps": 3,
+    "max_steps": 2,
     ### can use all available host memory
-    "max_host_mem_gib": 0
+    #"max_host_mem_gib": 250,
+    "use_muon": False
 }
 
 # ---------------------------------------------------------------------------
