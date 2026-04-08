@@ -203,12 +203,12 @@ class SparseFeedForward(nn.Module):
     def forward(self, x: torch.Tensor):
         nvtx.range_push("MoE") # NVTX Start
 
-        output, aux_loss = self.moe_layer(
+        output, _aux_loss = self.moe_layer(
             x, kernel_backend_moe=self.kernel_backend
         )
 
         nvtx.range_pop() # NVTX End
-        return output, aux_loss
+        return output
 
 
 class DecoderBlock(nn.Module):
@@ -229,20 +229,16 @@ class DecoderBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, freqs):
         nvtx.range_push("Attention Sub-Block")
-        h = x + self.attention(x, freqs)
+        h = x + self.attention(self.attention_norm(x), freqs)
         nvtx.range_pop()
         
         nvtx.range_push("FeedForward Sub-Block")
         ffn_input = self.ffn_norm(h)
-        if self.is_sparse:
-            ffn_output, aux_loss = self.feed_forward(ffn_input)
-        else:
-            ffn_output = self.feed_forward(ffn_input)
-            aux_loss = None
+        ffn_output = self.feed_forward(ffn_input)
         out = h + ffn_output
         nvtx.range_pop()
         
-        return out, aux_loss
+        return out
 
 class Model(nn.Module):
     def __init__(self, args: ModelArgs):
@@ -278,20 +274,13 @@ class Model(nn.Module):
 
         freqs = self.freqs_complex[:seq_len].to(h.device)
 
-        total_aux_loss = torch.tensor(0.0, device=h.device, dtype=torch.float32)
-        aux_loss_count = 0
-
         nvtx.range_push("Decoder Layers")
         for i, layer in enumerate(self.layers):
             nvtx.range_push(f"Layer {i}")
             if i in act_layers_saved:
-                h, aux_loss = layer(h, freqs)
+                h = layer(h, freqs)
             else:
-                #h, aux_loss = checkpoint(layer, h, freqs, use_reentrant=False)
-                h, aux_loss = deepspeed.checkpointing.checkpoint(layer, h, freqs)
-            if aux_loss is not None:
-                total_aux_loss = total_aux_loss + aux_loss
-                aux_loss_count += 1
+                h = deepspeed.checkpointing.checkpoint(layer, h, freqs)
             nvtx.range_pop()
         nvtx.range_pop()
             
@@ -299,12 +288,8 @@ class Model(nn.Module):
         h = self.norm(h)
         nvtx.range_pop()
 
-
         nvtx.range_push("Output Projection and Cross Entropy Loss")
         loss = chunked_linear_cross_entropy(h, self.output.weight, labels.view(-1))
         nvtx.range_pop()
-
-        if aux_loss_count > 0:
-            loss = loss + total_aux_loss / aux_loss_count
         
         return loss
