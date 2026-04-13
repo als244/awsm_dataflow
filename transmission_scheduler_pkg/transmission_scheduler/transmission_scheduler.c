@@ -5,17 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// --- CONFIGURATION ---
-// 1 tick = 1 ms., 10 ticks = 100 us
-// Buffer covers ~100 seconds.
-
-// Solver is faster when BUF_SIZE fits in cache (e.g. 64KB), but then 
-// to achieve 100us precision we are limited in duration of scheduled tasks.
-// This config should take solver be on order of hundreds of microseconds, 
-// could also do something like TIME_SCALE = 1 and BUF_SIZE = 65536 for order of 
-// magnitude faster solving speed
-#define TIME_SCALE 10
-#define BUF_SIZE 1048576
 #define INF_NEG -1.0e18
 
 typedef struct {
@@ -23,161 +12,158 @@ typedef struct {
   double size;
 } FastOption;
 
+// Per-cell traceback info: which option was chosen and what absolute source
+// time produced it.
+typedef struct {
+  int8_t opt;
+  int src_abs;
+} TraceCell;
+
 // =========================================================
 //  SCALAR SOLVER (Portable Fallback)
 // =========================================================
 static double solve_scalar(int T, int N, int k, const double *compute,
                            const double *durations, const double *sizes,
-                           double deadline, int *out_choices) {
+                           double deadline, int time_scale, int buf_size,
+                           int *out_choices) {
 
-  // 1. Precompute integer constraints
   int *arrivals = (int *)malloc(T * sizeof(int));
   int *deadlines = (int *)malloc(T * sizeof(int));
   if (!arrivals || !deadlines)
     return 0.0;
 
-  int dead_ticks = (int)(deadline * TIME_SCALE);
+  int dead_ticks = (int)(deadline * time_scale);
   double clk = 0;
   for (int i = 0; i < T; i++) {
     clk += compute[i];
-    arrivals[i] = (int)(clk * TIME_SCALE);
+    arrivals[i] = (int)(clk * time_scale);
   }
 
   for (int i = 0; i < T; i++) {
-    // 1. Start with the Global Deadline
     int d = dead_ticks;
-
-    // 2. The Hard Buffer Constraint
-    // Task i transfer must complete by the time Task i+N-1 finishes compute.
-    // If it finishes later, there is idle time waiting for prior buffer to be released -> INVALID.
     if (i + N - 1 < T && i + N - 1 >= 0) {
-      if (arrivals[i + N - 1] < d) {
+      if (arrivals[i + N - 1] < d)
         d = arrivals[i + N - 1];
-      }
     }
-
     deadlines[i] = d;
   }
 
-  // 2. Precompute Options
   FastOption *opts = (FastOption *)malloc(T * k * sizeof(FastOption));
-  if (!opts) {
-    free(arrivals);
-    free(deadlines);
-    return 0.0;
-  }
+  if (!opts) { free(arrivals); free(deadlines); return 0.0; }
 
   for (int i = 0; i < T * k; i++) {
-    opts[i].duration_ticks = (int)(durations[i] * TIME_SCALE);
+    opts[i].duration_ticks = (int)(durations[i] * time_scale);
     if (opts[i].duration_ticks < 1)
       opts[i].duration_ticks = 1;
     opts[i].size = sizes[i];
   }
 
-  // 3. Memory Setup
-  double *dp_curr = (double *)malloc(BUF_SIZE * sizeof(double));
-  double *dp_next = (double *)malloc(BUF_SIZE * sizeof(double));
-  int8_t *history = (int8_t *)malloc((size_t)T * BUF_SIZE * sizeof(int8_t));
+  double *dp_curr = (double *)malloc(buf_size * sizeof(double));
+  double *dp_next = (double *)malloc(buf_size * sizeof(double));
+  TraceCell *history = (TraceCell *)malloc((size_t)T * buf_size * sizeof(TraceCell));
+  int *win_offsets = (int *)malloc(T * sizeof(int));
 
-  if (!dp_curr || !dp_next || !history) {
-    free(arrivals);
-    free(deadlines);
-    free(opts);
-    if (dp_curr)
-      free(dp_curr);
-    if (dp_next)
-      free(dp_next);
-    if (history)
-      free(history);
+  if (!dp_curr || !dp_next || !history || !win_offsets) {
+    free(arrivals); free(deadlines); free(opts);
+    if (dp_curr) free(dp_curr);
+    if (dp_next) free(dp_next);
+    if (history) free(history);
+    if (win_offsets) free(win_offsets);
     return 0.0;
   }
 
-  for (int i = 0; i < BUF_SIZE; i++) {
+  for (int i = 0; i < buf_size; i++) {
     dp_curr[i] = INF_NEG;
     dp_next[i] = INF_NEG;
   }
+
+  int base_offset = 0;
   dp_curr[0] = 0.0;
+  int min_t = 0, max_t = 0;
 
-  int min_t = 0;
-  int max_t = 0;
-
-  // 4. Forward Pass
   for (int i = 0; i < T; i++) {
-    int arrival = arrivals[i];
-    int limit = deadlines[i];
+    int arrival_abs = arrivals[i];
+    int limit_abs = deadlines[i];
     FastOption *task_opts = &opts[i * k];
 
-    int next_min = BUF_SIZE;
-    int next_max = -1;
+    int arrival = arrival_abs - base_offset;
 
-    // --- SMART CLEAR (Scalar) ---
-    // Find max duration to bound the clear
+    if (arrival >= buf_size / 2) {
+      int shift = min_t;
+      if (shift > 0) {
+        int span = max_t - min_t + 1;
+        memmove(&dp_curr[0], &dp_curr[min_t], span * sizeof(double));
+        for (int t = span; t < span + shift && t < buf_size; t++)
+          dp_curr[t] = INF_NEG;
+        base_offset += shift;
+        min_t -= shift;
+        max_t -= shift;
+        arrival -= shift;
+      }
+    }
+
+    win_offsets[i] = base_offset;
+    int next_min = buf_size, next_max = -1;
+
     int max_dur_task = 0;
     for (int o = 0; o < k; o++)
       if (task_opts[o].duration_ticks > max_dur_task)
         max_dur_task = task_opts[o].duration_ticks;
 
-    // We only need to clear [arrival ... max_t + max_dur]
-    // But for safety against "Wait Logic" reading old garbage, we stick to
-    // clearing what we write. Wait Logic reads from 'dp_curr' (which is valid).
-    // Pull Logic writes to 'dp_next'.
-    // So we just need to clear the region in dp_next we might touch.
-    int clear_start = arrival;
+    int clear_start = (arrival < 0) ? 0 : arrival;
     int clear_end = max_t + max_dur_task + 1;
-    if (clear_end >= BUF_SIZE)
-      clear_end = BUF_SIZE;
-    if (clear_start > clear_end)
-      clear_start = clear_end; // Edge case
-
+    if (clear_end > buf_size) clear_end = buf_size;
+    if (clear_start > clear_end) clear_start = clear_end;
     for (int t = clear_start; t < clear_end; t++)
       dp_next[t] = INF_NEG;
-    // --- END SMART CLEAR ---
+
+    double max_wait = INF_NEG;
+    int max_wait_abs = 0;
+    {
+      int search_lim = (max_t < arrival) ? max_t : arrival;
+      for (int t = min_t; t <= search_lim; t++) {
+        if (dp_curr[t] > max_wait) {
+          max_wait = dp_curr[t];
+          max_wait_abs = t + base_offset;
+        }
+      }
+    }
 
     for (int opt = 0; opt < k; opt++) {
       int dur = task_opts[opt].duration_ticks;
       double size = task_opts[opt].size;
 
-      // Wait Logic
-      double max_wait = INF_NEG;
-      int search_lim = (max_t < arrival) ? max_t : arrival;
-      for (int t = min_t; t <= search_lim; t++) {
-        if (dp_curr[t] > max_wait)
-          max_wait = dp_curr[t];
-      }
-
       if (max_wait > INF_NEG) {
         int finish = arrival + dur;
-        if (finish <= limit && finish < BUF_SIZE) {
+        if (finish + base_offset <= limit_abs && finish >= 0 && finish < buf_size) {
           double val = max_wait + size;
           if (val > dp_next[finish]) {
             dp_next[finish] = val;
-            history[i * BUF_SIZE + finish] = (int8_t)opt;
-            if (finish < next_min)
-              next_min = finish;
-            if (finish > next_max)
-              next_max = finish;
+            TraceCell *cell = &history[(size_t)i * buf_size + finish];
+            cell->opt = (int8_t)opt;
+            cell->src_abs = max_wait_abs;
+            if (finish < next_min) next_min = finish;
+            if (finish > next_max) next_max = finish;
           }
         }
       }
 
-      // Pull Logic
       int src_start = arrival + 1;
-      if (src_start < min_t)
-        src_start = min_t;
+      if (src_start < min_t) src_start = min_t;
 
       if (src_start <= max_t) {
         for (int src = src_start; src <= max_t; src++) {
           if (dp_curr[src] > INF_NEG) {
             int dest = src + dur;
-            if (dest <= limit && dest < BUF_SIZE) {
+            if (dest + base_offset <= limit_abs && dest >= 0 && dest < buf_size) {
               double val = dp_curr[src] + size;
               if (val > dp_next[dest]) {
                 dp_next[dest] = val;
-                history[i * BUF_SIZE + dest] = (int8_t)opt;
-                if (dest < next_min)
-                  next_min = dest;
-                if (dest > next_max)
-                  next_max = dest;
+                TraceCell *cell = &history[(size_t)i * buf_size + dest];
+                cell->opt = (int8_t)opt;
+                cell->src_abs = src + base_offset;
+                if (dest < next_min) next_min = dest;
+                if (dest > next_max) next_max = dest;
               }
             }
           }
@@ -186,24 +172,16 @@ static double solve_scalar(int T, int N, int k, const double *compute,
     }
 
     if (next_max == -1) {
-      free(arrivals);
-      free(deadlines);
-      free(opts);
-      free(dp_curr);
-      free(dp_next);
-      free(history);
+      free(arrivals); free(deadlines); free(opts);
+      free(dp_curr); free(dp_next); free(history); free(win_offsets);
       return 0.0;
     }
 
     min_t = next_min;
     max_t = next_max;
-
-    double *tmp = dp_curr;
-    dp_curr = dp_next;
-    dp_next = tmp;
+    double *tmp = dp_curr; dp_curr = dp_next; dp_next = tmp;
   }
 
-  // 5. Traceback
   double max_val = INF_NEG;
   int curr_t = -1;
   for (int t = min_t; t <= max_t; t++) {
@@ -214,303 +192,247 @@ static double solve_scalar(int T, int N, int k, const double *compute,
   }
 
   if (curr_t != -1) {
+    int curr_abs = curr_t + base_offset;
     for (int i = T - 1; i >= 0; i--) {
-      int opt = history[i * BUF_SIZE + curr_t];
-      out_choices[i] = opt;
-
-      int dur = opts[i * k + opt].duration_ticks;
-      int computed_prev = curr_t - dur;
-
-      if (computed_prev <= arrivals[i]) {
-        curr_t = 0;
-      } else {
-        curr_t = computed_prev;
-      }
+      int rel_t = curr_abs - win_offsets[i];
+      TraceCell *cell = &history[(size_t)i * buf_size + rel_t];
+      out_choices[i] = cell->opt;
+      curr_abs = cell->src_abs;
     }
   } else {
     max_val = 0.0;
   }
 
-  free(arrivals);
-  free(deadlines);
-  free(opts);
-  free(dp_curr);
-  free(dp_next);
-  free(history);
-
+  free(arrivals); free(deadlines); free(opts);
+  free(dp_curr); free(dp_next); free(history); free(win_offsets);
   return max_val;
 }
 
 // =========================================================
-//  AVX2 SOLVER (High Performance)
+//  AVX2 SOLVER (Vectorized pull with mask-based trace)
 // =========================================================
 
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
 
 __attribute__((target("avx2"))) static double
-solve_avx2_impl(int T, int N, int k, const double *compute,
-                const double *durations, const double *sizes, double deadline,
-                int *out_choices) {
+solve_avx2(int T, int N, int k, const double *compute,
+           const double *durations, const double *sizes, double deadline,
+           int time_scale, int buf_size, int *out_choices) {
 
   int *arrivals = (int *)malloc(T * sizeof(int));
   int *deadlines = (int *)malloc(T * sizeof(int));
   if (!arrivals || !deadlines)
     return 0.0;
 
-  int dead_ticks = (int)(deadline * TIME_SCALE);
+  int dead_ticks = (int)(deadline * time_scale);
   double clk = 0;
   for (int i = 0; i < T; i++) {
     clk += compute[i];
-    arrivals[i] = (int)(clk * TIME_SCALE);
+    arrivals[i] = (int)(clk * time_scale);
   }
 
   for (int i = 0; i < T; i++) {
-    // 1. Start with the Global Deadline
     int d = dead_ticks;
-
-    // 2. The Hard Buffer Constraint
-    // Task i transfer must complete by the time Task i+N-1 finishes compute.
-    // If it finishes later, there is idle time waiting for prior buffer to be released -> INVALID.
     if (i + N - 1 < T && i + N - 1 >= 0) {
-      if (arrivals[i + N - 1] < d) {
+      if (arrivals[i + N - 1] < d)
         d = arrivals[i + N - 1];
-      }
     }
-
     deadlines[i] = d;
   }
 
   FastOption *opts = (FastOption *)malloc(T * k * sizeof(FastOption));
-  if (!opts) {
-    free(arrivals);
-    free(deadlines);
-    return 0.0;
-  }
+  if (!opts) { free(arrivals); free(deadlines); return 0.0; }
 
   for (int i = 0; i < T * k; i++) {
-    opts[i].duration_ticks = (int)(durations[i] * TIME_SCALE);
+    opts[i].duration_ticks = (int)(durations[i] * time_scale);
     if (opts[i].duration_ticks < 1)
       opts[i].duration_ticks = 1;
     opts[i].size = sizes[i];
   }
 
-  // Full Table Alloc
-  static double *dp_table = NULL;
-  static int dp_rows = 0;
-  static int dp_cols = 0;
+  double *dp_curr = (double *)malloc(buf_size * sizeof(double));
+  double *dp_next = (double *)malloc(buf_size * sizeof(double));
+  TraceCell *history = (TraceCell *)malloc((size_t)T * buf_size * sizeof(TraceCell));
+  int *win_offsets = (int *)malloc(T * sizeof(int));
 
-  // Check for resize needed
-  if (!dp_table || (T + 1) > dp_rows || BUF_SIZE > dp_cols) {
-    if (dp_table)
-      free(dp_table);
-    dp_rows = (T + 1);
-    dp_cols = BUF_SIZE;
-    dp_table = (double *)malloc((size_t)dp_rows * dp_cols * sizeof(double));
-  }
-  if (!dp_table) {
-    free(arrivals);
-    free(deadlines);
-    free(opts);
+  if (!dp_curr || !dp_next || !history || !win_offsets) {
+    free(arrivals); free(deadlines); free(opts);
+    if (dp_curr) free(dp_curr);
+    if (dp_next) free(dp_next);
+    if (history) free(history);
+    if (win_offsets) free(win_offsets);
     return 0.0;
   }
 
-  // Init Row 0
-  // We only clear row 0 fully once.
-  for (int t = 0; t < BUF_SIZE; t++)
-    dp_table[t] = INF_NEG;
-  dp_table[0] = 0.0;
+  for (int i = 0; i < buf_size; i++) {
+    dp_curr[i] = INF_NEG;
+    dp_next[i] = INF_NEG;
+  }
 
-  int min_t = 0;
-  int max_t = 0;
+  int base_offset = 0;
+  dp_curr[0] = 0.0;
+  int min_t = 0, max_t = 0;
 
   for (int i = 0; i < T; i++) {
-    int arrival = arrivals[i];
-    int limit = deadlines[i];
+    int arrival_abs = arrivals[i];
+    int limit_abs = deadlines[i];
     FastOption *task_opts = &opts[i * k];
 
-    double *src = &dp_table[i * BUF_SIZE];
-    double *dst = &dp_table[(i + 1) * BUF_SIZE];
+    int arrival = arrival_abs - base_offset;
 
-    // --- SMART CLEAR (AVX) ---
+    if (arrival >= buf_size / 2) {
+      int shift = min_t;
+      if (shift > 0) {
+        int span = max_t - min_t + 1;
+        memmove(&dp_curr[0], &dp_curr[min_t], span * sizeof(double));
+        for (int t = span; t < span + shift && t < buf_size; t++)
+          dp_curr[t] = INF_NEG;
+        base_offset += shift;
+        min_t -= shift;
+        max_t -= shift;
+        arrival -= shift;
+      }
+    }
+
+    win_offsets[i] = base_offset;
+    int next_min = buf_size, next_max = -1;
+
     int max_dur_task = 0;
     for (int o = 0; o < k; o++)
       if (task_opts[o].duration_ticks > max_dur_task)
         max_dur_task = task_opts[o].duration_ticks;
 
-    int clear_start = arrival;
-    int clear_end = max_t + max_dur_task + 32; // padding for AVX writes
-    if (clear_end >= BUF_SIZE)
-      clear_end = BUF_SIZE;
-    if (clear_start > clear_end)
-      clear_start = clear_end;
-
-    // Only clear active region
+    int clear_start = (arrival < 0) ? 0 : arrival;
+    int clear_end = max_t + max_dur_task + 1;
+    if (clear_end > buf_size) clear_end = buf_size;
+    if (clear_start > clear_end) clear_start = clear_end;
     for (int t = clear_start; t < clear_end; t++)
-      dst[t] = INF_NEG;
-    // --- END SMART CLEAR ---
+      dp_next[t] = INF_NEG;
 
-    // Wait Value
     double max_wait = INF_NEG;
-    int search_lim = (max_t < arrival) ? max_t : arrival;
-    for (int t = min_t; t <= search_lim; t++) {
-      if (src[t] > max_wait)
-        max_wait = src[t];
-    }
-
-    int next_min = BUF_SIZE;
-    int next_max = -1;
-
-    if (max_wait > INF_NEG) {
-      for (int opt = 0; opt < k; opt++) {
-        int fin = arrival + task_opts[opt].duration_ticks;
-        if (fin <= limit && fin < BUF_SIZE) {
-          double val = max_wait + task_opts[opt].size;
-          if (val > dst[fin])
-            dst[fin] = val;
-          if (fin < next_min)
-            next_min = fin;
-          if (fin > next_max)
-            next_max = fin;
+    int max_wait_abs = 0;
+    {
+      int search_lim = (max_t < arrival) ? max_t : arrival;
+      for (int t = min_t; t <= search_lim; t++) {
+        if (dp_curr[t] > max_wait) {
+          max_wait = dp_curr[t];
+          max_wait_abs = t + base_offset;
         }
       }
     }
 
-    // AVX Pull
     for (int opt = 0; opt < k; opt++) {
       int dur = task_opts[opt].duration_ticks;
       double size = task_opts[opt].size;
-      int start_dst = arrival + 1 + dur;
-      int end_dst = max_t + dur;
 
-      if (start_dst > limit)
-        continue;
-      if (end_dst > limit)
-        end_dst = limit;
-      if (end_dst >= BUF_SIZE)
-        end_dst = BUF_SIZE - 1; // Safety
-
-      if (start_dst < next_min)
-        next_min = start_dst;
-      if (end_dst > next_max)
-        next_max = end_dst;
-
-      __m256d v_size = _mm256_set1_pd(size);
-
-      int t = start_dst;
-      for (; t <= end_dst - 3; t += 4) {
-        __m256d v_src = _mm256_loadu_pd(&src[t - dur]);
-        __m256d v_res = _mm256_add_pd(v_src, v_size);
-        __m256d v_dst = _mm256_loadu_pd(&dst[t]);
-        v_dst = _mm256_max_pd(v_dst, v_res);
-        _mm256_storeu_pd(&dst[t], v_dst);
+      // Wait Logic (scalar — single cell)
+      if (max_wait > INF_NEG) {
+        int finish = arrival + dur;
+        if (finish + base_offset <= limit_abs && finish >= 0 && finish < buf_size) {
+          double val = max_wait + size;
+          if (val > dp_next[finish]) {
+            dp_next[finish] = val;
+            TraceCell *cell = &history[(size_t)i * buf_size + finish];
+            cell->opt = (int8_t)opt;
+            cell->src_abs = max_wait_abs;
+            if (finish < next_min) next_min = finish;
+            if (finish > next_max) next_max = finish;
+          }
+        }
       }
-      for (; t <= end_dst; t++) {
-        double val = src[t - dur] + size;
-        if (val > dst[t])
-          dst[t] = val;
+
+      // Pull Logic — AVX2 with mask-based trace recording
+      int src_start = arrival + 1;
+      if (src_start < min_t) src_start = min_t;
+
+      // Clamp src range so dest stays in bounds
+      int src_end = max_t;
+      {
+        int max_src_dl = limit_abs - base_offset - dur;
+        if (max_src_dl < src_end) src_end = max_src_dl;
+        int max_src_buf = buf_size - 1 - dur;
+        if (max_src_buf < src_end) src_end = max_src_buf;
+      }
+
+      if (src_start <= src_end) {
+        int dest_start = src_start + dur;
+        int dest_end = src_end + dur;
+        if (dest_start < next_min) next_min = dest_start;
+        if (dest_end > next_max) next_max = dest_end;
+
+        __m256d v_size = _mm256_set1_pd(size);
+        TraceCell *hist_row = &history[(size_t)i * buf_size];
+
+        int src = src_start;
+        for (; src <= src_end - 3; src += 4) {
+          int dest = src + dur;
+          __m256d v_src = _mm256_loadu_pd(&dp_curr[src]);
+          __m256d v_val = _mm256_add_pd(v_src, v_size);
+          __m256d v_old = _mm256_loadu_pd(&dp_next[dest]);
+          __m256d v_new = _mm256_max_pd(v_old, v_val);
+          _mm256_storeu_pd(&dp_next[dest], v_new);
+
+          // Compare: which lanes did v_val win over v_old?
+          // v_val > v_old iff v_new != v_old (since max picked v_val)
+          __m256d v_cmp = _mm256_cmp_pd(v_val, v_old, _CMP_GT_OQ);
+          int mask = _mm256_movemask_pd(v_cmp);
+
+          // Write trace only for lanes that improved
+          if (mask) {
+            if (mask & 1) { hist_row[dest].opt = (int8_t)opt; hist_row[dest].src_abs = src + base_offset; }
+            if (mask & 2) { hist_row[dest+1].opt = (int8_t)opt; hist_row[dest+1].src_abs = src + 1 + base_offset; }
+            if (mask & 4) { hist_row[dest+2].opt = (int8_t)opt; hist_row[dest+2].src_abs = src + 2 + base_offset; }
+            if (mask & 8) { hist_row[dest+3].opt = (int8_t)opt; hist_row[dest+3].src_abs = src + 3 + base_offset; }
+          }
+        }
+        // Scalar tail
+        for (; src <= src_end; src++) {
+          int dest = src + dur;
+          double val = dp_curr[src] + size;
+          if (val > dp_next[dest]) {
+            dp_next[dest] = val;
+            hist_row[dest].opt = (int8_t)opt;
+            hist_row[dest].src_abs = src + base_offset;
+          }
+        }
       }
     }
 
     if (next_max == -1) {
-      free(arrivals);
-      free(deadlines);
-      free(opts);
-      // dp_table persists
+      free(arrivals); free(deadlines); free(opts);
+      free(dp_curr); free(dp_next); free(history); free(win_offsets);
       return 0.0;
     }
+
     min_t = next_min;
     max_t = next_max;
+    double *tmp = dp_curr; dp_curr = dp_next; dp_next = tmp;
   }
 
-  double *final_row = &dp_table[T * BUF_SIZE];
   double max_val = INF_NEG;
   int curr_t = -1;
-
-  // 1. Find the best finish time for the last task
   for (int t = min_t; t <= max_t; t++) {
-    if (final_row[t] > max_val) {
-      max_val = final_row[t];
+    if (dp_curr[t] > max_val) {
+      max_val = dp_curr[t];
       curr_t = t;
     }
   }
 
   if (curr_t != -1) {
-    // 2. Walk backwards
+    int curr_abs = curr_t + base_offset;
     for (int i = T - 1; i >= 0; i--) {
-      double current_val = dp_table[(i + 1) * BUF_SIZE + curr_t];
-      double *src_row = &dp_table[i * BUF_SIZE];
-      int arrival = arrivals[i];
-      FastOption *task_opts = &opts[i * k];
-
-      int best_opt = 0; // Default to 0 to prevent -1
-      int best_prev_t = curr_t - task_opts[0].duration_ticks; // Default prev
-      double min_error = 1.0e15; // Start with huge error
-
-      // Check all k options to find which one matches 'current_val' best
-      for (int opt = 0; opt < k; opt++) {
-        int dur = task_opts[opt].duration_ticks;
-        double size = task_opts[opt].size;
-        int prev_t = curr_t - dur;
-
-        double estimated_val = INF_NEG;
-        int candidate_prev_t = -1;
-
-        // A. Pull Logic (Transition from specific prev time)
-        if (prev_t > arrival) {
-          estimated_val = src_row[prev_t] + size;
-          candidate_prev_t = prev_t;
-        }
-        // B. Wait Logic (Transition from any time <= arrival)
-        else if (prev_t <= arrival) {
-          // Find max value in valid wait window
-          double w_val = INF_NEG;
-          int best_z = 0;
-
-          // Optimization: Scan backwards from arrival as later times are
-          // preferred
-          for (int z = arrival; z >= 0; z--) {
-            if (src_row[z] > w_val) {
-              w_val = src_row[z];
-              best_z = z;
-            }
-          }
-          estimated_val = w_val + size;
-          candidate_prev_t = best_z;
-        }
-
-        // Calculate Reconstruction Error
-        double diff = current_val - estimated_val;
-        if (diff < 0)
-          diff = -diff; // fabs
-
-        // Keep the option that explains the score with least mathematical error
-        if (diff < min_error) {
-          min_error = diff;
-          best_opt = opt;
-          best_prev_t = candidate_prev_t;
-        }
-      }
-
-      // Assign the winner
-      out_choices[i] = best_opt;
-
-      // Setup next iteration
-      // Safety: If best_prev_t is somehow invalid (rare), clamp it
-      if (best_prev_t < 0)
-        best_prev_t = 0;
-      curr_t = best_prev_t;
+      int rel_t = curr_abs - win_offsets[i];
+      TraceCell *cell = &history[(size_t)i * buf_size + rel_t];
+      out_choices[i] = cell->opt;
+      curr_abs = cell->src_abs;
     }
   } else {
     max_val = 0.0;
-    // Fill with 0s on total failure
-    for (int i = 0; i < T; i++)
-      out_choices[i] = 0;
   }
 
-  free(arrivals);
-  free(deadlines);
-  free(opts);
+  free(arrivals); free(deadlines); free(opts);
+  free(dp_curr); free(dp_next); free(history); free(win_offsets);
   return max_val;
 }
 #endif
@@ -520,15 +442,77 @@ solve_avx2_impl(int T, int N, int k, const double *compute,
 // =========================================================
 double solve_scheduler(int T, int N, int k, const double *compute,
                        const double *durations, const double *sizes,
-                       double deadline, int *out_choices) {
+                       double deadline, int time_scale, int buf_size,
+                       int *out_choices) {
 
 #if defined(__x86_64__) || defined(_M_X64)
   if (__builtin_cpu_supports("avx2")) {
-    return solve_avx2_impl(T, N, k, compute, durations, sizes, deadline,
-                           out_choices);
+    return solve_avx2(T, N, k, compute, durations, sizes, deadline,
+                      time_scale, buf_size, out_choices);
   }
 #endif
 
   return solve_scalar(T, N, k, compute, durations, sizes, deadline,
-                      out_choices);
+                      time_scale, buf_size, out_choices);
+}
+
+// =========================================================
+//  COMPUTE BUF_SIZE
+// =========================================================
+int compute_buf_size(int T, int N, int k, const double *compute,
+                     const double *durations, double deadline,
+                     int time_scale) {
+
+  int *arrivals = (int *)malloc(T * sizeof(int));
+  if (!arrivals)
+    return 2048;
+
+  double clk = 0;
+  for (int i = 0; i < T; i++) {
+    clk += compute[i];
+    arrivals[i] = (int)(clk * time_scale);
+  }
+
+  int dead_ticks = (int)(deadline * time_scale);
+
+  int max_dur = 1, min_dur = 0x7FFFFFFF;
+  for (int i = 0; i < T * k; i++) {
+    int d = (int)(durations[i] * time_scale);
+    if (d < 1) d = 1;
+    if (d > max_dur) max_dur = d;
+    if (d < min_dur) min_dur = d;
+  }
+
+  int sim_max = 0;
+  int max_band = 0;
+  for (int i = 0; i < T; i++) {
+    int arr = arrivals[i];
+    int dl = dead_ticks;
+    if (i + N - 1 < T)
+      dl = arrivals[i + N - 1];
+
+    int new_max;
+    if (sim_max > arr)
+      new_max = sim_max + max_dur;
+    else
+      new_max = arr + max_dur;
+    if (new_max > dl)
+      new_max = dl;
+
+    int band = new_max - (arr + min_dur);
+    if (band > max_band)
+      max_band = band;
+    sim_max = new_max;
+  }
+
+  free(arrivals);
+
+  int needed = max_band * 2 + 256;
+  int buf_size = 1;
+  while (buf_size < needed)
+    buf_size <<= 1;
+  if (buf_size < 2048)
+    buf_size = 2048;
+
+  return buf_size;
 }

@@ -43,9 +43,20 @@ class TransmissionScheduler:
             np.ctypeslib.ndpointer(dtype=np.float64, flags='C'),
             np.ctypeslib.ndpointer(dtype=np.float64, flags='C'),
             ctypes.c_double,
+            ctypes.c_int,
+            ctypes.c_int,
             np.ctypeslib.ndpointer(dtype=np.int32, flags='C')
         ]
         self.lib.solve_scheduler.restype = ctypes.c_double
+
+        self.lib.compute_buf_size.argtypes = [
+            ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            np.ctypeslib.ndpointer(dtype=np.float64, flags='C'),
+            np.ctypeslib.ndpointer(dtype=np.float64, flags='C'),
+            ctypes.c_double,
+            ctypes.c_int,
+        ]
+        self.lib.compute_buf_size.restype = ctypes.c_int
 
     def solve(self, compute, durations, sizes, N):
         """
@@ -85,6 +96,15 @@ class TransmissionScheduler:
         # Safe = Total Arrival Time + Sum of Worst-Case Durations + Padding
         safe_deadline = np.sum(compute) + np.sum(np.max(durations, axis=1)) + 1000.0
 
+        # Time scale: ticks per ms. The C solver uses a sliding window, so
+        # absolute times can exceed buf_size safely.
+        time_scale = 10
+
+        # Compute buf_size from the actual active band width via C helper.
+        buf_size = self.lib.compute_buf_size(
+            T, N, k, compute, durations.flatten(), safe_deadline, time_scale
+        )
+
         # 3. Handle Negative Scores (Robustness Fix)
         # Even in strict mode, if you pass negative sizes (e.g. for minimization),
         # we must shift them to be positive for the C solver to work correctly.
@@ -107,7 +127,7 @@ class TransmissionScheduler:
         flat_sizes = shifted_sizes.flatten()
         
         raw_val = self.lib.solve_scheduler(
-            T, N, k, compute, flat_durs, flat_sizes, safe_deadline, choices
+            T, N, k, compute, flat_durs, flat_sizes, safe_deadline, time_scale, buf_size, choices
         )
         
         # 5. Check Failure vs. Success
