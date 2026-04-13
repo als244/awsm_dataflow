@@ -142,7 +142,7 @@ Contains two implementations of the same sliding-window DP algorithm, plus the `
 
 - **`solve_scalar()`**: Portable implementation using standard C. Used as a fallback on systems without AVX2.
 - **`solve_avx2()`**: Optimized implementation for AVX2-capable x86_64 systems, auto-selected at runtime via `__builtin_cpu_supports("avx2")`. The pull loop uses AVX2 intrinsics (`_mm256_add_pd`, `_mm256_max_pd`) to compute DP value updates 4 cells at a time. Traceback recording uses a mask-based approach: after each AVX max, `_mm256_cmp_pd` + `_mm256_movemask_pd` identifies which lanes improved, and `TraceCell` writes happen only for those lanes. The speedup over scalar scales with the active band width — modest (~5%) for narrow bands (~150 ticks), more significant for wider bands.
-- **`compute_buf_size()`**: Simulates the DP band evolution (tracking `sim_max` per step, clipped by deadlines) to find the worst-case active band width. Applies a 2x safety margin and rounds up to a power of 2 (minimum 2048).
+- **`compute_buf_size()`**: Simulates the DP band evolution (tracking both `sim_min` and `sim_max` per step, clipped by deadlines) to find the worst-case buffer span — the maximum distance from the earliest active state to the furthest reachable finish time. Adds padding and rounds up to a power of 2 (minimum 2048).
 
 Both solvers share the same structure:
 

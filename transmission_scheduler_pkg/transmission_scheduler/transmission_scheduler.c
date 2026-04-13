@@ -483,14 +483,31 @@ int compute_buf_size(int T, int N, int k, const double *compute,
     if (d < min_dur) min_dur = d;
   }
 
+  // Simulate the DP band evolution. Track both sim_min and sim_max
+  // (the absolute time range of active states). The buffer must span
+  // from sim_min to max(sim_max + max_dur, arrival + max_dur) after
+  // each step, because re-centering shifts sim_min to index 0.
+  int sim_min = 0;
   int sim_max = 0;
-  int max_band = 0;
+  int max_span = 0;
   for (int i = 0; i < T; i++) {
     int arr = arrivals[i];
     int dl = dead_ticks;
     if (i + N - 1 < T)
       dl = arrivals[i + N - 1];
 
+    // After re-centering, sim_min maps to index 0.
+    // Wait logic writes at: (arr - sim_min) + dur  (up to max_dur)
+    // Pull logic writes at: (sim_max - sim_min) + dur (up to max_dur)
+    // The furthest index written is the max of these two.
+    int wait_reach = arr - sim_min + max_dur;
+    int pull_reach = sim_max - sim_min + max_dur;
+    int reach = (wait_reach > pull_reach) ? wait_reach : pull_reach;
+    if (reach > max_span)
+      max_span = reach;
+
+    // Update sim_min/sim_max for next step
+    int new_min = arr + min_dur;
     int new_max;
     if (sim_max > arr)
       new_max = sim_max + max_dur;
@@ -499,15 +516,13 @@ int compute_buf_size(int T, int N, int k, const double *compute,
     if (new_max > dl)
       new_max = dl;
 
-    int band = new_max - (arr + min_dur);
-    if (band > max_band)
-      max_band = band;
+    sim_min = new_min;
     sim_max = new_max;
   }
 
   free(arrivals);
 
-  int needed = max_band * 2 + 256;
+  int needed = max_span + 256;
   int buf_size = 1;
   while (buf_size < needed)
     buf_size <<= 1;
