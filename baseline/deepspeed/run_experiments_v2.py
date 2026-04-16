@@ -13,9 +13,11 @@ Key behaviour:
     and swept over.
   - Combinations where seqs_per_batch * seq_len > MAX_TOKENS_PER_BATCH
     for the given model are skipped.
-  - Remaining dimensions (zero_stage, save_act_layer_frac, offload_act,
+  - Remaining dimensions (zero_stage, save_layer_freq, offload_act,
     model_name) are crossed against every (seq_len, seqs_per_batch,
     grad_accum_steps) combination.
+  - save_layer_freq values that are >= the model's n_layers are skipped
+    per-model (train.py requires save_layer_freq in [0, n_layers)).
   - num_steps is fixed at 3 for every run.
   - Each run is launched via the deepspeed launcher with a random master port.
 """
@@ -59,7 +61,7 @@ MAX_TOKENS_PER_BATCH: dict[str, int] = {
 
 SWEEP_PARAMS = {
     "zero_stage":           [1, 2, 3],
-    "save_act_layer_frac":  [0, 0.25, 0.5, 0.75, 1],
+    "save_layer_freq":      [0, 2, 3, 4, 5, 6, 8, 16, 24, 32, 1, 48, 64],
     "offload_act":          [False, True],
     "model_name":           [
         "llama3_8B",
@@ -91,6 +93,20 @@ DRY_RUN      = False
 # Port range for random master port selection (avoid well-known ports)
 MASTER_PORT_MIN = 29500
 MASTER_PORT_MAX = 39999
+
+
+# ---------------------------------------------------------------------------
+# Per-model n_layers (used to filter save_layer_freq values that train.py
+# would reject — it requires save_layer_freq in [0, n_layers)).
+# Keep in sync with model_dims.json.
+# ---------------------------------------------------------------------------
+
+MODEL_N_LAYERS: dict[str, int] = {
+    "llama3_8B":     32,
+    "olmoe_7Bx1B":   16,
+    "dense_15B":     64,
+    "sparse_16Bx3B": 32,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +148,7 @@ def params_to_log_path(combo: dict) -> str:
     """Build the log file path from a parameter combo dict.
 
     Layout:
-        experiment_logs/{model_name}/seqlen_{}_seqsperbatch_{}_gradaccum_{}_zero_{}_salf_{}_offact_{}.log
+        experiment_logs/{model_name}/seqlen_{}_spb_{}_ga_{}_zero_{}_slf_{}_offact_{}.log
     """
     model = combo["model_name"]
     parts = (
@@ -140,7 +156,7 @@ def params_to_log_path(combo: dict) -> str:
         f"_spb_{_fmt_val(combo['seqs_per_batch'])}"
         f"_ga_{_fmt_val(combo['grad_accum_steps'])}"
         f"_zero_{_fmt_val(combo['zero_stage'])}"
-        f"_salf_{_fmt_val(combo['save_act_layer_frac'])}"
+        f"_slf_{_fmt_val(combo['save_layer_freq'])}"
         f"_offact_{_fmt_val(combo['offload_act'])}"
     )
     return os.path.join(LOG_BASE_DIR, model, parts + ".log")
@@ -155,7 +171,7 @@ def params_to_run_name(combo: dict) -> str:
         f"_spb_{_fmt_val(combo['seqs_per_batch'])}"
         f"_ga_{_fmt_val(combo['grad_accum_steps'])}"
         f"_zero_{_fmt_val(combo['zero_stage'])}"
-        f"_salf_{_fmt_val(combo['save_act_layer_frac'])}"
+        f"_slf_{_fmt_val(combo['save_layer_freq'])}"
         f"_offact_{_fmt_val(combo['offload_act'])}"
     )
 
@@ -206,7 +222,8 @@ def all_combos(
     the remaining sweep dimensions.
 
     Combinations where seqs_per_batch * seq_len exceeds the model-specific
-    MAX_TOKENS_PER_BATCH are excluded.
+    MAX_TOKENS_PER_BATCH are excluded. Combinations where save_layer_freq
+    is >= the model's n_layers are also excluded (train.py would reject them).
     """
     # Build the non-seq, non-batch portion of the grid
     keys   = list(sweep.keys())
@@ -214,17 +231,27 @@ def all_combos(
     other_combos = [dict(zip(keys, c)) for c in itertools.product(*values)]
 
     result = []
-    skipped = 0
+    skipped_tokens = 0
+    skipped_freq   = 0
     for seq_len, seqs_per_step in seq_configs:
         factor_pairs = _factor_pairs(seqs_per_step)
         for seqs_per_batch, grad_accum_steps in factor_pairs:
             for other in other_combos:
                 model_name = other["model_name"]
+
+                # Skip if tokens-per-batch exceeds model budget.
                 tokens_per_batch = seqs_per_batch * seq_len
                 bound = max_tokens_per_batch.get(model_name)
                 if bound is not None and tokens_per_batch > bound:
-                    skipped += 1
+                    skipped_tokens += 1
                     continue
+
+                # Skip if save_layer_freq is outside [0, n_layers) for this model.
+                n_layers = MODEL_N_LAYERS.get(model_name)
+                if n_layers is not None and other["save_layer_freq"] >= n_layers:
+                    skipped_freq += 1
+                    continue
+
                 result.append({
                     "seq_len": seq_len,
                     "seqs_per_batch": seqs_per_batch,
@@ -232,8 +259,10 @@ def all_combos(
                     **other,
                 })
 
-    if skipped:
-        print(f"Filtered out {skipped} combination(s) exceeding max_tokens_per_batch limits.")
+    if skipped_tokens:
+        print(f"Filtered out {skipped_tokens} combination(s) exceeding max_tokens_per_batch limits.")
+    if skipped_freq:
+        print(f"Filtered out {skipped_freq} combination(s) with save_layer_freq >= model n_layers.")
 
     return result
 
