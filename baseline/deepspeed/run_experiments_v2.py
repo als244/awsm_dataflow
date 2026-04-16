@@ -61,7 +61,8 @@ MAX_TOKENS_PER_BATCH: dict[str, int] = {
 
 SWEEP_PARAMS = {
     "zero_stage":           [1, 2, 3],
-    "save_layer_freq":      [0, 2, 3, 4, 6, 8, 16, 24, 32, 1],
+    ### 0 = save none, 1 = save all, otherwise save if layer % save freq == 0
+    "save_layer_freq":      [0, 1, 2, 4, 8, 16, 24, 32],
     "offload_act":          [False, True],
     "model_name":           [
         "llama3_8B",
