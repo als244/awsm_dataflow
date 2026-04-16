@@ -37,13 +37,13 @@ from datetime import datetime
 
 SEQ_CONFIGS: list[tuple[int, int]] = [
     # (seq_len, seqs_per_step)
-    (1024, 512),
+    #(1024, 512),
     #(2048, 256),
     #(4096, 128),
     (8192, 64),
     #(16384, 32),
     #(32768, 16),
-    (65536, 8),
+    #(65536, 8),
     #(131072, 4),
 ]
 
@@ -61,7 +61,7 @@ MAX_TOKENS_PER_BATCH: dict[str, int] = {
 
 SWEEP_PARAMS = {
     "zero_stage":           [1, 2, 3],
-    "save_layer_freq":      [0, 2, 3, 4, 5, 6, 8, 16, 24, 32, 1, 48, 64],
+    "save_layer_freq":      [0, 2, 3, 4, 6, 8, 16, 24, 32, 1],
     "offload_act":          [False, True],
     "model_name":           [
         "llama3_8B",
