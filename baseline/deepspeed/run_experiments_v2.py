@@ -13,11 +13,11 @@ Key behaviour:
     and swept over.
   - Combinations where seqs_per_batch * seq_len > MAX_TOKENS_PER_BATCH
     for the given model are skipped.
-  - Remaining dimensions (zero_stage, save_layer_freq, offload_act,
+  - Remaining dimensions (zero_stage, checkpoint_layer_freq, offload_act,
     model_name) are crossed against every (seq_len, seqs_per_batch,
     grad_accum_steps) combination.
-  - save_layer_freq values that are >= the model's n_layers are skipped
-    per-model (train.py requires save_layer_freq in [0, n_layers)).
+  - checkpoint_layer_freq values that are >= the model's n_layers are skipped
+    per-model (train.py requires checkpoint_layer_freq in [0, n_layers)).
   - num_steps is fixed at 3 for every run.
   - Each run is launched via the deepspeed launcher with a random master port.
 """
@@ -61,8 +61,8 @@ MAX_TOKENS_PER_BATCH: dict[str, int] = {
 
 SWEEP_PARAMS = {
     "zero_stage":           [1, 2, 3],
-    ### 0 = save none, 1 = save all, otherwise save if layer % save freq == 0
-    "save_layer_freq":      [0, 1, 2, 4, 8, 16, 24, 32],
+    ### 0 = checkpoint none, 1 = checkpoint all, otherwise checkpoint if layer % freq == 0
+    "checkpoint_layer_freq": [0, 1, 2, 4, 8, 16, 24, 32],
     "offload_act":          [False, True],
     "model_name":           [
         "llama3_8B",
@@ -97,8 +97,8 @@ MASTER_PORT_MAX = 39999
 
 
 # ---------------------------------------------------------------------------
-# Per-model n_layers (used to filter save_layer_freq values that train.py
-# would reject — it requires save_layer_freq in [0, n_layers)).
+# Per-model n_layers (used to filter checkpoint_layer_freq values that train.py
+# would reject — it requires checkpoint_layer_freq in [0, n_layers)).
 # Keep in sync with model_dims.json.
 # ---------------------------------------------------------------------------
 
@@ -149,7 +149,7 @@ def params_to_log_path(combo: dict) -> str:
     """Build the log file path from a parameter combo dict.
 
     Layout:
-        experiment_logs/{model_name}/seqlen_{}_spb_{}_ga_{}_zero_{}_slf_{}_offact_{}.log
+        experiment_logs/{model_name}/seqlen_{}_spb_{}_ga_{}_zero_{}_clf_{}_offact_{}.log
     """
     model = combo["model_name"]
     parts = (
@@ -157,7 +157,7 @@ def params_to_log_path(combo: dict) -> str:
         f"_spb_{_fmt_val(combo['seqs_per_batch'])}"
         f"_ga_{_fmt_val(combo['grad_accum_steps'])}"
         f"_zero_{_fmt_val(combo['zero_stage'])}"
-        f"_slf_{_fmt_val(combo['save_layer_freq'])}"
+        f"_clf_{_fmt_val(combo['checkpoint_layer_freq'])}"
         f"_offact_{_fmt_val(combo['offload_act'])}"
     )
     return os.path.join(LOG_BASE_DIR, model, parts + ".log")
@@ -172,7 +172,7 @@ def params_to_run_name(combo: dict) -> str:
         f"_spb_{_fmt_val(combo['seqs_per_batch'])}"
         f"_ga_{_fmt_val(combo['grad_accum_steps'])}"
         f"_zero_{_fmt_val(combo['zero_stage'])}"
-        f"_slf_{_fmt_val(combo['save_layer_freq'])}"
+        f"_clf_{_fmt_val(combo['checkpoint_layer_freq'])}"
         f"_offact_{_fmt_val(combo['offload_act'])}"
     )
 
@@ -223,7 +223,7 @@ def all_combos(
     the remaining sweep dimensions.
 
     Combinations where seqs_per_batch * seq_len exceeds the model-specific
-    MAX_TOKENS_PER_BATCH are excluded. Combinations where save_layer_freq
+    MAX_TOKENS_PER_BATCH are excluded. Combinations where checkpoint_layer_freq
     is >= the model's n_layers are also excluded (train.py would reject them).
     """
     # Build the non-seq, non-batch portion of the grid
@@ -247,9 +247,9 @@ def all_combos(
                     skipped_tokens += 1
                     continue
 
-                # Skip if save_layer_freq is outside [0, n_layers) for this model.
+                # Skip if checkpoint_layer_freq is outside [0, n_layers) for this model.
                 n_layers = MODEL_N_LAYERS.get(model_name)
-                if n_layers is not None and other["save_layer_freq"] >= n_layers:
+                if n_layers is not None and other["checkpoint_layer_freq"] >= n_layers:
                     skipped_freq += 1
                     continue
 
@@ -263,7 +263,7 @@ def all_combos(
     if skipped_tokens:
         print(f"Filtered out {skipped_tokens} combination(s) exceeding max_tokens_per_batch limits.")
     if skipped_freq:
-        print(f"Filtered out {skipped_freq} combination(s) with save_layer_freq >= model n_layers.")
+        print(f"Filtered out {skipped_freq} combination(s) with checkpoint_layer_freq >= model n_layers.")
 
     return result
 

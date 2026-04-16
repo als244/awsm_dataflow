@@ -261,7 +261,7 @@ class Model(nn.Module):
         self.max_seq_len = 2 ** 20
         self.freqs_complex = precompute_theta_pos_frequencies(self.head_dim, self.max_seq_len, self.rope_theta)
 
-    def forward(self, tokens: torch.Tensor, labels: torch.Tensor, save_layer_freq: int = 0):
+    def forward(self, tokens: torch.Tensor, labels: torch.Tensor, checkpoint_layer_freq: int = 0):
         batch_size, seq_len = tokens.shape
 
         nvtx.range_push("Token Embeddings")
@@ -273,12 +273,13 @@ class Model(nn.Module):
         nvtx.range_push("Decoder Layers")
         for i, layer in enumerate(self.layers):
             nvtx.range_push(f"Layer {i}")
-            # Layer i is SAVED (no checkpoint) iff save_layer_freq > 0 and i % save_layer_freq == 0.
-            # save_layer_freq == 0 => checkpoint every layer.
-            if save_layer_freq > 0 and (i % save_layer_freq) == 0:
-                h = layer(h, freqs)
-            else:
+            # checkpoint_layer_freq == 0 => no checkpointing.
+            # checkpoint_layer_freq == 1 => checkpoint every layer.
+            # Otherwise => checkpoint iff i % checkpoint_layer_freq == 0.
+            if checkpoint_layer_freq > 0 and (i % checkpoint_layer_freq) == 0:
                 h = deepspeed.checkpointing.checkpoint(layer, h, freqs)
+            else:
+                h = layer(h, freqs)
             nvtx.range_pop()
         nvtx.range_pop()
             

@@ -30,10 +30,10 @@ peak_host_mem_gb = 0.0
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="DeepSpeed Training")
 parser.add_argument('--zero_stage', type=int, default=None)
-parser.add_argument('--save_layer_freq', type=int, default=0,
-                    help="Integer in [0, n_layers). Save (skip checkpointing on) every Nth layer "
-                         "(i.e. layer i is saved iff save_layer_freq > 0 and i %% save_layer_freq == 0). "
-                         "Default 0 means save nothing (full layer-wise checkpointing).")
+parser.add_argument('--checkpoint_layer_freq', type=int, default=0,
+                    help="Integer in [0, n_layers). 0 => no checkpointing; 1 => checkpoint every layer; "
+                         "otherwise layer i is checkpointed iff i %% checkpoint_layer_freq == 0. "
+                         "Default 0 means no layer-wise checkpointing.")
 parser.add_argument('--offload_act', action='store_true', help="Offload act checkpoints to cpu (blocking, hurts perf)")
 ### This has terrible performance, every bwd layer triggers blocking, paged data transfer of muon state to device and then to host causing severe idleness...
 parser.add_argument('--use_muon', action='store_true', help="Use muon optimizer, otherwise AdamW")
@@ -52,7 +52,7 @@ grad_accum_steps = args.grad_accum_steps
 seqs_per_batch = args.seqs_per_batch
 num_steps = args.num_steps
 zero_stage = args.zero_stage
-save_layer_freq = args.save_layer_freq
+checkpoint_layer_freq = args.checkpoint_layer_freq
 offload_act = args.offload_act
 use_muon = args.use_muon
 
@@ -99,10 +99,10 @@ def load_model_args(model_name: str) -> ModelArgs:
 
 model_args = load_model_args(args.model_name)
 
-# Validate save_layer_freq is in [0, n_layers)
-if not (0 <= save_layer_freq < model_args.n_layers):
+# Validate checkpoint_layer_freq is in [0, n_layers)
+if not (0 <= checkpoint_layer_freq < model_args.n_layers):
     raise ValueError(
-        f"--save_layer_freq must be in [0, n_layers={model_args.n_layers}), got {save_layer_freq}"
+        f"--checkpoint_layer_freq must be in [0, n_layers={model_args.n_layers}), got {checkpoint_layer_freq}"
     )
 
 SEED = 42
@@ -193,13 +193,15 @@ model_engine, optimizer, training_dataloader, _ = deepspeed.initialize(
     training_data=dummy_dataset # Pass the Dataset here
 )
 
-# Determine which layers are checkpointed vs. saved using modulo on save_layer_freq.
-# Convention: layer i is SAVED (no checkpoint) iff save_layer_freq > 0 and i % save_layer_freq == 0.
-# save_layer_freq == 0 => save nothing, checkpoint everything.
+# Determine which layers are checkpointed using modulo on checkpoint_layer_freq.
+# checkpoint_layer_freq == 0 => no checkpointing.
+# checkpoint_layer_freq == 1 => checkpoint every layer.
+# Otherwise => layer i is checkpointed iff i % checkpoint_layer_freq == 0.
 recompute_layers = []
-for i in range(model_args.n_layers):
-    if save_layer_freq == 0 or (i % save_layer_freq) != 0:
-        recompute_layers.append(i)
+if checkpoint_layer_freq > 0:
+    for i in range(model_args.n_layers):
+        if (i % checkpoint_layer_freq) == 0:
+            recompute_layers.append(i)
 
 num_checkpoints = len(recompute_layers)
 
@@ -238,7 +240,7 @@ for epoch in range(epochs):
         inputs = inputs.to(model_engine.device)
         labels = labels.to(model_engine.device)
         
-        loss = model_engine(inputs, labels, save_layer_freq=save_layer_freq)
+        loss = model_engine(inputs, labels, checkpoint_layer_freq=checkpoint_layer_freq)
         #loss = criterion(outputs.view(-1, model_args.vocab_size), labels.view(-1))
 
         current_host_mem_gb = process.memory_info().rss / (1024 ** 3)
