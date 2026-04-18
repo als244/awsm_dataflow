@@ -586,32 +586,40 @@ def awsm_moe_sort(
     expert_counts_gpu: torch.Tensor = None,
     block_size: int = 256
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Sort token-expert assignments by expert ID for efficient batched expert computation.
-    
-    Same API and semantics as the original. The only change is internal:
-    the slow PyTorch cumsum is replaced with a Triton prefix-sum kernel.
-    
-    Args:
-        topk_ids: Expert IDs, shape [T, K], CUDA, int32/int64
-        num_experts: Total number of experts (E)
-        indices: Optional pre-allocated output [T, K]
-        expert_counts_gpu: Optional pre-allocated output [E] for counts
-        block_size: Triton block size. Default 256.
-    
-    Returns:
-        (index_mapping [T, K], expert_counts [E])
-    """
     if not topk_ids.is_cuda:
         raise ValueError("topk_ids must be a CUDA tensor")
     
     flat_ids = topk_ids.flatten()
     N_TOKENS = flat_ids.numel()
-    
+
+    MAX_BLOCK_B = 8192  # Fixed upper bound — no recompilation on seq len change
+
+    # Auto-scale block_size up so num_blocks <= MAX_BLOCK_B.
+    # block_size must stay a power of 2 and must match a compiled BLOCK_SIZE
+    # for moe_count_kernel / moe_map_kernel — since those kernels take BLOCK_SIZE
+    # as constexpr, each distinct value here triggers a recompile. Limit the
+    # auto-scale to a small, fixed ladder so the total number of compilations
+    # across a run is bounded (one per ladder rung actually used).
+    min_block_size_needed = triton.cdiv(N_TOKENS, MAX_BLOCK_B)
+    # Round up to next power of 2, clamp to a known ladder
+    BLOCK_SIZE_LADDER = (256, 512, 1024, 2048)
+    chosen_block_size = block_size
+    for bs in BLOCK_SIZE_LADDER:
+        if bs >= min_block_size_needed and bs >= block_size:
+            chosen_block_size = bs
+            break
+    else:
+        # N_TOKENS > MAX_BLOCK_B * 2048 — truly enormous, fail loudly
+        raise ValueError(
+            f"N_TOKENS={N_TOKENS} too large: would need block_size > "
+            f"{BLOCK_SIZE_LADDER[-1]} to fit in MAX_BLOCK_B={MAX_BLOCK_B}."
+        )
+    block_size = chosen_block_size
+
     num_blocks = triton.cdiv(N_TOKENS, block_size)
     block_counts = torch.zeros((num_blocks, num_experts), dtype=torch.int32, device=topk_ids.device)
     
-    # Phase 1: Count tokens per expert per block (unchanged)
+    # Phase 1: Count tokens per expert per block
     moe_count_kernel[(num_blocks,)](
         flat_ids, 
         block_counts, 
@@ -620,26 +628,9 @@ def awsm_moe_sort(
         BLOCK_SIZE=block_size
     )
 
-    # Phase 2: Prefix sum (FIXED — replaces the slow PyTorch ops)
-    #
-    # BEFORE (launches tensor_kernel_scan_outer_dim with grid<<<1,1,1>>>, ~810µs):
-    #   total_counts = block_counts.sum(dim=0)
-    #   expert_starts = torch.cat([torch.zeros(1, ...), total_counts.cumsum(0)[:-1]])
-    #   block_accum = torch.zeros_like(block_counts)
-    #   block_accum[1:] = block_counts.cumsum(dim=0)[:-1]
-    #   offsets = block_accum + expert_starts.unsqueeze(0)
-    #
-    # AFTER (one Triton kernel + one tiny cumsum on [E]):
-    
+    # Phase 2: Prefix sum
     block_accum = torch.empty_like(block_counts)
     total_counts = torch.empty(num_experts, dtype=torch.int32, device=topk_ids.device)
-    
-    MAX_BLOCK_B = 8192  # Fixed upper bound — no recompilation on seq len change
-    if num_blocks > MAX_BLOCK_B:
-        raise ValueError(
-            f"num_blocks={num_blocks} exceeds MAX_BLOCK_B={MAX_BLOCK_B}. "
-            f"Increase MAX_BLOCK_B or increase block_size."
-        )
 
     num_warps = max(1, min(4, MAX_BLOCK_B // 32))
     
@@ -655,16 +646,12 @@ def awsm_moe_sort(
         num_warps=num_warps,
     )
     
-    # expert_starts: exclusive cumsum of total_counts, shape [E]
-    # This is cumsum on a tiny [E] tensor (~64 elements) — completely different 
-    # PyTorch code path from the [512, E] cumsum, takes <10µs.
     expert_starts = torch.zeros(num_experts, dtype=torch.int32, device=topk_ids.device)
     expert_starts[1:] = total_counts.cumsum(0)[:-1]
     
-    # Final offsets = per-block exclusive prefix sum + global expert start
     offsets = block_accum + expert_starts.unsqueeze(0)
 
-    # Phase 3: Map tokens to sorted positions (unchanged)
+    # Phase 3: Map tokens to sorted positions
     if indices is None:
         indices_flat = torch.empty_like(flat_ids)
     else:
